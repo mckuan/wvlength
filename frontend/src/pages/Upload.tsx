@@ -2,6 +2,7 @@ import { useState } from "react"
 import axios from "axios"
 import DropZone from "../components/DropZone"
 import DataPreview from "../components/DataPreview"
+import ChartBuilder from "../components/ChartBuilder"
 
 interface Column {
   name: string
@@ -46,6 +47,9 @@ export default function Upload() {
       <DropZone onUpload={handleUpload} loading={loading} />
       {error && <p className="mt-4 text-red-500">{error}</p>}
       {result && <DataPreview {...result} />}
+      {result && (
+        <ChartBuilder columns={result.columns} preview={result.preview} />
+      )}
     </div>
   )
 }

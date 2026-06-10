@@ -1,17 +1,16 @@
 //parent of ChartOptions and individual chart views, manages/renders state for both
 import { useState, useEffect } from "react"
 import BarChartView from "./charts/BarChartView"
+import LineChartView from "./charts/LineChartView"
 import ChartOptions from "./ChartOptions"
 import type { AxisConfig, StyleConfig } from "./ChartOptions"
-import { aggregateData } from "../lib/datasets"
+import { aggregateData, aggregateMultiple } from "../lib/datasets"
 
-// types for columns and preview data passed from Upload page
 interface Column {
   name: string
   type: string
 }
 
-// props for ChartBuilder component
 interface Props {
   columns: Column[]
   preview: Record<string, unknown>[]
@@ -50,10 +49,9 @@ const DEFAULT_STYLE: StyleConfig = {
   defaultColor: "#d1d5db",
 }
 
-
 function renderChart(
   type: string,
-  data: { x: string | number; y: number } [],
+  data: { x: string | number; y: number }[],
   xAxis: string,
   yAxis: string,
   axisConfig: AxisConfig,
@@ -78,7 +76,6 @@ function renderChart(
   }
 }
 
-//chart componenet
 export default function ChartBuilder({ columns, preview }: Props) {
   const [chartType, setChartType]     = useState("bar")
   const [groupBy, setGroupBy]         = useState(columns[0]?.name ?? "")
@@ -86,7 +83,11 @@ export default function ChartBuilder({ columns, preview }: Props) {
     columns.find(c => c.type.includes("int") || c.type.includes("float"))?.name ?? ""
   )
   const [aggregation, setAggregation] = useState("mean")
-  const [chartData, setChartData] = useState<{ x: string | number; y: number }[]>([])
+  const [chartData, setChartData]     = useState<{ x: string | number; y: number }[]>([])
+  const [lineData, setLineData]       = useState<Record<string, string | number>[]>([])
+  const [yColumns, setYColumns]       = useState<string[]>(
+    [columns.find(c => c.type.includes("int") || c.type.includes("float"))?.name ?? ""]
+  )
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState<string | null>(null)
   const [axisConfig, setAxisConfig]   = useState<AxisConfig>(DEFAULT_AXIS)
@@ -94,33 +95,57 @@ export default function ChartBuilder({ columns, preview }: Props) {
 
   const xIsNumeric = columns.find(c => c.name === groupBy)?.type !== "object"
 
-  // re-run aggregation and update chart data whenever states change
+  // bar chart aggregation
   useEffect(() => {
+    if (chartType === "line") return
     if (!groupBy || !valueCol) return
-    
+
     const binSize = axisConfig.binSize !== "" ? parseFloat(axisConfig.binSize) : undefined
-    if (axisConfig.binSize !== "" && (isNaN(binSize!) || binSize! <= 0)) return  // don't fetch on invalid bin size
-    
+    if (axisConfig.binSize !== "" && (isNaN(binSize!) || binSize! <= 0)) return
+
     const run = async () => {
-        setLoading(true)
-        setError(null)
-        try {
+      setLoading(true)
+      setError(null)
+      try {
         const result = await aggregateData({
-            data: preview,
-            group_by: groupBy,
-            value_col: valueCol,
-            aggregation,
-            bin_size: binSize,
+          data: preview,
+          group_by: groupBy,
+          value_col: valueCol,
+          aggregation,
+          bin_size: binSize,
         })
         setChartData(result.data)
-        } catch {
+      } catch {
         setError("Aggregation failed — check your backend is running.")
-        } finally {
+      } finally {
         setLoading(false)
-        }
+      }
     }
     run()
-    }, [groupBy, valueCol, aggregation, preview, axisConfig.binSize])  // just .binSize not the whole object
+  }, [chartType, groupBy, valueCol, aggregation, preview, axisConfig.binSize])
+
+  // line chart aggregation
+  useEffect(() => {
+    if (chartType !== "line" || !groupBy || yColumns.length === 0) return
+    const run = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await aggregateMultiple({
+          data: preview,
+          group_by: groupBy,
+          value_cols: yColumns,
+          aggregation,
+        })
+        setLineData(result)
+      } catch {
+        setError("Aggregation failed — check your backend is running.")
+      } finally {
+        setLoading(false)
+      }
+    }
+    run()
+  }, [chartType, groupBy, yColumns, aggregation, preview])
 
   return (
     <div className="mt-10">
@@ -157,34 +182,66 @@ export default function ChartBuilder({ columns, preview }: Props) {
             ))}
           </select>
         </div>
-        <div>
-          <label className="block text-sm text-gray-500 mb-1">Value</label>
-          <select
-            value={valueCol}
-            onChange={e => setValueCol(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          >
-            {columns
+
+        {chartType !== "line" && (
+          <div>
+            <label className="block text-sm text-gray-500 mb-1">Value</label>
+            <select
+              value={valueCol}
+              onChange={e => setValueCol(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            >
+              {columns
                 .filter(col => col.type.includes("int") || col.type.includes("float"))
                 .map(col => (
-                    <option key={col.name} value={col.name}>{col.name}</option>
+                  <option key={col.name} value={col.name}>{col.name}</option>
                 ))
-            }
-          </select>
-        </div>
+              }
+            </select>
+          </div>
+        )}
+
         <div>
-        <label className="block text-sm text-gray-500 mb-1">Aggregation</label>
-        <select
+          <label className="block text-sm text-gray-500 mb-1">Aggregation</label>
+          <select
             value={aggregation}
             onChange={e => setAggregation(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-            >
+          >
             {AGGREGATIONS.map(a => (
-                <option key={a.value} value={a.value}>{a.label}</option>
+              <option key={a.value} value={a.value}>{a.label}</option>
             ))}
-        </select>
+          </select>
         </div>
       </div>
+
+      {/* Y columns multi-select for line chart */}
+      {chartType === "line" && (
+        <div className="mb-4">
+          <label className="block text-sm text-gray-500 mb-2">Y Columns (pick one or more)</label>
+          <div className="flex flex-wrap gap-2">
+            {columns.filter(c => c.type.includes("int") || c.type.includes("float")).map(col => (
+              <button
+                key={col.name}
+                onClick={() => {
+                  setYColumns(prev =>
+                    prev.includes(col.name)
+                      ? prev.filter(c => c !== col.name)
+                      : [...prev, col.name]
+                  )
+                }}
+                className={`px-3 py-1 rounded-full text-xs border transition-colors
+                  ${yColumns.includes(col.name)
+                    ? "bg-indigo-500 text-white border-indigo-500"
+                    : "text-gray-500 border-gray-200 hover:border-gray-400"
+                  }`}
+              >
+                {col.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Options panel */}
       <ChartOptions
@@ -201,9 +258,18 @@ export default function ChartBuilder({ columns, preview }: Props) {
         {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
         {loading
           ? <p className="text-gray-400 text-sm">Calculating...</p>
-          : chartData.length > 0
-            ? renderChart(chartType, chartData, groupBy, `${aggregation} of ${valueCol}`, axisConfig, styleConfig, preview)
-            : <p className="text-gray-400 text-sm">Select options above to render a chart.</p>
+          : chartType === "line"
+            ? lineData.length > 0
+              ? <LineChartView
+                  data={lineData}
+                  xLabel={groupBy}
+                  yLabels={yColumns}
+                  axisConfig={axisConfig}
+                />
+              : <p className="text-gray-400 text-sm">Select options above to render a chart.</p>
+            : chartData.length > 0
+              ? renderChart(chartType, chartData, groupBy, `${aggregation} of ${valueCol}`, axisConfig, styleConfig, preview)
+              : <p className="text-gray-400 text-sm">Select options above to render a chart.</p>
         }
       </div>
     </div>

@@ -101,16 +101,18 @@ export default function ChartOptions({
               className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-24"
             />
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Bin Size</label>
-            <input
-            type="number"
-            value={axisConfig.binSize}
-            onChange={e => onAxisChange({ ...axisConfig, binSize: e.target.value })}
-            placeholder="auto"
-            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-24"
-            />
-          </div>
+        {xIsNumeric && (
+            <div>
+                <label className="block text-xs text-gray-500 mb-1">Bin Size</label>
+                <input
+                type="number"
+                value={axisConfig.binSize}
+                onChange={e => onAxisChange({ ...axisConfig, binSize: e.target.value })}
+                placeholder="auto"
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-24"
+                />
+            </div>
+        )}
         </div>
       )}
 

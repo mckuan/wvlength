@@ -1,14 +1,17 @@
+//parent of ChartOptions and individual chart views, manages/renders state for both
 import { useState, useEffect } from "react"
 import BarChartView from "./charts/BarChartView"
 import ChartOptions from "./ChartOptions"
 import type { AxisConfig, StyleConfig } from "./ChartOptions"
 import { aggregateData } from "../lib/datasets"
 
+// types for columns and preview data passed from Upload page
 interface Column {
   name: string
   type: string
 }
 
+// props for ChartBuilder component
 interface Props {
   columns: Column[]
   preview: Record<string, unknown>[]
@@ -33,7 +36,7 @@ const AGGREGATIONS = [
 ]
 
 const DEFAULT_AXIS: AxisConfig = {
-  yMin: "", yMax: "", yTickInterval: "", xTickInterval: ""
+  yMin: "", yMax: "", yTickInterval: "", binSize: ""
 }
 
 const DEFAULT_STYLE: StyleConfig = {
@@ -47,9 +50,10 @@ const DEFAULT_STYLE: StyleConfig = {
   defaultColor: "#d1d5db",
 }
 
+
 function renderChart(
   type: string,
-  data: { x: string; y: number }[],
+  data: { x: string | number; y: number } [],
   xAxis: string,
   yAxis: string,
   axisConfig: AxisConfig,
@@ -63,6 +67,7 @@ function renderChart(
           data={data}
           xLabel={xAxis}
           yLabel={yAxis}
+          xIsNumeric={typeof data[0]?.x === "number"}
           axisConfig={axisConfig}
           styleConfig={styleConfig}
           allRows={preview}
@@ -73,6 +78,7 @@ function renderChart(
   }
 }
 
+//chart componenet
 export default function ChartBuilder({ columns, preview }: Props) {
   const [chartType, setChartType]     = useState("bar")
   const [groupBy, setGroupBy]         = useState(columns[0]?.name ?? "")
@@ -80,33 +86,41 @@ export default function ChartBuilder({ columns, preview }: Props) {
     columns.find(c => c.type.includes("int") || c.type.includes("float"))?.name ?? ""
   )
   const [aggregation, setAggregation] = useState("mean")
-  const [chartData, setChartData]     = useState<{ x: string; y: number }[]>([])
+  const [chartData, setChartData] = useState<{ x: string | number; y: number }[]>([])
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState<string | null>(null)
   const [axisConfig, setAxisConfig]   = useState<AxisConfig>(DEFAULT_AXIS)
   const [styleConfig, setStyleConfig] = useState<StyleConfig>(DEFAULT_STYLE)
 
+  const xIsNumeric = columns.find(c => c.name === groupBy)?.type !== "object"
+
+  // re-run aggregation and update chart data whenever states change
   useEffect(() => {
     if (!groupBy || !valueCol) return
+    
+    const binSize = axisConfig.binSize !== "" ? parseFloat(axisConfig.binSize) : undefined
+    if (axisConfig.binSize !== "" && (isNaN(binSize!) || binSize! <= 0)) return  // don't fetch on invalid bin size
+    
     const run = async () => {
-      setLoading(true)
-      setError(null)
-      try {
+        setLoading(true)
+        setError(null)
+        try {
         const result = await aggregateData({
-          data: preview,
-          group_by: groupBy,
-          value_col: valueCol,
-          aggregation,
+            data: preview,
+            group_by: groupBy,
+            value_col: valueCol,
+            aggregation,
+            bin_size: binSize,
         })
         setChartData(result.data)
-      } catch {
+        } catch {
         setError("Aggregation failed — check your backend is running.")
-      } finally {
+        } finally {
         setLoading(false)
-      }
+        }
     }
     run()
-  }, [groupBy, valueCol, aggregation, preview])
+    }, [groupBy, valueCol, aggregation, preview, axisConfig.binSize])  // just .binSize not the whole object
 
   return (
     <div className="mt-10">
@@ -150,22 +164,25 @@ export default function ChartBuilder({ columns, preview }: Props) {
             onChange={e => setValueCol(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
           >
-            {columns.map(col => (
-              <option key={col.name} value={col.name}>{col.name}</option>
-            ))}
+            {columns
+                .filter(col => col.type.includes("int") || col.type.includes("float"))
+                .map(col => (
+                    <option key={col.name} value={col.name}>{col.name}</option>
+                ))
+            }
           </select>
         </div>
         <div>
-          <label className="block text-sm text-gray-500 mb-1">Aggregation</label>
-          <select
+        <label className="block text-sm text-gray-500 mb-1">Aggregation</label>
+        <select
             value={aggregation}
             onChange={e => setAggregation(e.target.value)}
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          >
+            >
             {AGGREGATIONS.map(a => (
-              <option key={a.value} value={a.value}>{a.label}</option>
+                <option key={a.value} value={a.value}>{a.label}</option>
             ))}
-          </select>
+        </select>
         </div>
       </div>
 
@@ -173,6 +190,7 @@ export default function ChartBuilder({ columns, preview }: Props) {
       <ChartOptions
         axisConfig={axisConfig}
         styleConfig={styleConfig}
+        xIsNumeric={xIsNumeric}
         columns={columns}
         onAxisChange={setAxisConfig}
         onStyleChange={setStyleConfig}

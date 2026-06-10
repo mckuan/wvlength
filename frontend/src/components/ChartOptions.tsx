@@ -1,12 +1,16 @@
+// settings panel for chart options like axis limits, color modes, etc.
 import { useState } from "react"
 
+
+//chart axis behavior config
 export interface AxisConfig {
   yMin: string
   yMax: string
   yTickInterval: string
-  xTickInterval: string
+  binSize: string
 }
 
+//chart color styling config
 export interface StyleConfig {
   mode: "none" | "threshold" | "category" | "textmatch"
   // threshold
@@ -21,9 +25,11 @@ export interface StyleConfig {
   defaultColor: string
 }
 
+//chart properties
 interface Props {
   axisConfig: AxisConfig
   styleConfig: StyleConfig
+  xIsNumeric: boolean  
   columns: { name: string; type: string }[]
   onAxisChange: (config: AxisConfig) => void
   onStyleChange: (config: StyleConfig) => void
@@ -31,9 +37,11 @@ interface Props {
 
 const TABS = ["Axes", "Style"]
 
+//settings componenet
 export default function ChartOptions({
   axisConfig,
   styleConfig,
+  xIsNumeric,
   columns,
   onAxisChange,
   onStyleChange,
@@ -94,13 +102,13 @@ export default function ChartOptions({
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">X Tick Interval</label>
+            <label className="block text-xs text-gray-500 mb-1">Bin Size</label>
             <input
-              type="number"
-              value={axisConfig.xTickInterval}
-              onChange={e => onAxisChange({ ...axisConfig, xTickInterval: e.target.value })}
-              placeholder="auto"
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-24"
+            type="number"
+            value={axisConfig.binSize}
+            onChange={e => onAxisChange({ ...axisConfig, binSize: e.target.value })}
+            placeholder="auto"
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-24"
             />
           </div>
         </div>

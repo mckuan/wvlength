@@ -13,6 +13,7 @@ interface MultiAggregateParams {
   group_by: string
   value_cols: string[]
   aggregation: string
+  bin_size?: number
 }
 
 export async function aggregateData(params: AggregateParams) {
@@ -21,7 +22,6 @@ export async function aggregateData(params: AggregateParams) {
 }
 
 export async function aggregateMultiple(params: MultiAggregateParams) {
-  // call aggregate once per y column, merge results by x
   const results = await Promise.all(
     params.value_cols.map(col =>
       aggregateData({
@@ -29,11 +29,11 @@ export async function aggregateMultiple(params: MultiAggregateParams) {
         group_by: params.group_by,
         value_col: col,
         aggregation: params.aggregation,
+        bin_size: params.bin_size,   // add this
       })
     )
   )
 
-  // merge all results into one array keyed by x
   const merged: Record<string, Record<string, string | number>> = {}
   results.forEach((result, i) => {
     const col = params.value_cols[i]

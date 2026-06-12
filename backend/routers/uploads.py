@@ -67,7 +67,7 @@ def aggregate_data(req: AggregateRequest):
         
         # cut into bins and label them as "2013-2015", "2015-2017" etc
         labels = [f"{int(bins[i])}-{int(bins[i+1])}" for i in range(len(bins)-1)]
-        df["_group"] = pd.cut(df[req.group_by], bins=bins, labels=labels, right=True, include_lowest=True)
+        df["_group"] = pd.cut(df[req.group_by], bins=bins, labels=labels, right=False, include_lowest=True)
         df["_group"] = df["_group"].astype(str)
         group_col = "_group"
     else:

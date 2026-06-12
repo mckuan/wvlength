@@ -1,77 +1,40 @@
-//bar chart component, renders bar chart with rechart jsx
+//bar chart component, renders bar chart with rechart 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Cell
+  Tooltip, ResponsiveContainer, Cell, Legend
 } from "recharts"
-import type { AxisConfig, StyleConfig } from "../ChartOptions"
+import type { AxisConfig} from "../ChartOptions"
 
 interface Props {
-  data: { x: string | number; y: number }[]
+  data: Record<string, string | number>[]
   xLabel: string
-  yLabel: string
+  yLabels: string[]
   xIsNumeric: boolean
   axisConfig: AxisConfig
-  styleConfig: StyleConfig
   allRows?: Record<string, unknown>[]
 }
 
-// generates a color palette for category mode
-const CATEGORY_COLORS = [
+const BAR_COLORS = [
   "#6366f1", "#f59e0b", "#10b981", "#ef4444",
   "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6"
 ]
 
 function getBarColor(
-  entry: { x: string | number; y: number },
-  index: number,
-  style: StyleConfig,
-  allRows: Record<string, unknown>[],
-  categoryMap: Map<string, string>
+  entry: Record<string, string | number>,
+  colorIndex: number
 ): string {
-  switch (style.mode) {
-    case "threshold": {
-      const t = parseFloat(style.threshold)
-      if (isNaN(t)) return "#6366f1"
-      return entry.y >= t ? style.aboveColor : style.belowColor
-    }
-    case "category": {
-        return categoryMap.get(String(entry.x)) ?? "#6366f1"
-    }
-    case "textmatch": {
-        return String(entry.x).toLowerCase().includes(style.matchText.toLowerCase())
-        ? style.matchColor
-        : style.defaultColor
-    }
-    default:
-      return "#6366f1"
-  }
+    return BAR_COLORS[colorIndex % BAR_COLORS.length]
 }
 
 export default function BarChartView({
-  data, xLabel, yLabel, axisConfig, styleConfig, allRows = []
+  data, xLabel, yLabels, axisConfig, allRows = []
 }: Props) {
 
-  // maps values to colors for category styling
-  const categoryMap = new Map<string, string>()
-  if (styleConfig.mode === "category" && styleConfig.categoryCol) {
-    const uniqueVals = [...new Set(allRows.map(r => String(r[styleConfig.categoryCol])))]
-    uniqueVals.forEach((val, i) => {
-      categoryMap.set(val, CATEGORY_COLORS[i % CATEGORY_COLORS.length])
-    })
-    // map x values to their category color
-    data.forEach(entry => {
-        const match = allRows.find(r => String(r[xLabel]) === String(entry.x))
-        if (match) {
-            const cat = String(match[styleConfig.categoryCol])
-            categoryMap.set(String(entry.x), categoryMap.get(cat) ?? "#6366f1")
-        }
-    })
-  }
-  //converts string to numbers for rechart
   const yMin = axisConfig.yMin !== "" ? parseFloat(axisConfig.yMin) : undefined
   const yMax = axisConfig.yMax !== "" ? parseFloat(axisConfig.yMax) : undefined
   const yTick = axisConfig.yTickInterval !== "" ? parseFloat(axisConfig.yTickInterval) : undefined
-  
+
+  const isGrouped = yLabels.length > 1
 
   return (
     <ResponsiveContainer width="100%" height={350}>
@@ -82,19 +45,14 @@ export default function BarChartView({
           tick={{ fontSize: 12, fill: "#6b7280" }}
           axisLine={false}
           tickLine={false}
-          interval={0}
           label={{ value: xLabel, position: "insideBottom", offset: -2, fontSize: 12 }}
         />
         <YAxis
-            tick={{ fontSize: 12, fill: "#6b7280" }}
-            axisLine={false}
-            tickLine={false}
-            domain={[yMin ?? "auto", yMax ?? "auto"]}
-            ticks={yTick ? Array.from(
-                { length: Math.floor(((yMax ?? Math.max(...data.map(d => d.y))) - (yMin ?? 0)) / yTick) + 1 },
-                (_, i) => (yMin ?? 0) + i * yTick
-            ) : undefined}
-            label={{ value: yLabel, angle: -90, position: "insideLeft", fontSize: 12 }}
+          tick={{ fontSize: 12, fill: "#6b7280" }}
+          axisLine={false}
+          tickLine={false}
+          domain={[yMin ?? "auto", yMax ?? "auto"]}
+          tickCount={yTick ? Math.ceil(((yMax ?? 100) - (yMin ?? 0)) / yTick) : undefined}
         />
         <Tooltip
           contentStyle={{
@@ -103,14 +61,23 @@ export default function BarChartView({
             fontSize: "13px"
           }}
         />
-        <Bar dataKey="y" radius={[4, 4, 0, 0]} name={yLabel}>
-          {data.map((entry, index) => (
-            <Cell
-              key={`cell-${index}`}
-              fill={getBarColor(entry, index, styleConfig, allRows, categoryMap)}
-            />
-          ))}
-        </Bar>
+        {isGrouped && <Legend />}
+        {yLabels.map((label, colorIndex) => (
+          <Bar
+            key={label}
+            dataKey={label}
+            name={label}
+            fill={BAR_COLORS[colorIndex % BAR_COLORS.length]}
+            radius={[4, 4, 0, 0]}
+          >
+            {!isGrouped && data.map((entry, i) => (
+              <Cell
+                key={`cell-${i}`}
+                fill={getBarColor(entry, colorIndex)}
+              />
+            ))}
+          </Bar>
+        ))}
       </BarChart>
     </ResponsiveContainer>
   )

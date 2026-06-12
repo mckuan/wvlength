@@ -48,3 +48,8 @@ export async function aggregateMultiple(params: MultiAggregateParams) {
     String(a.x).localeCompare(String(b.x), undefined, { numeric: true })
   )
 }
+
+ export async function getSummary(data: Record<string, unknown>[], columns: string[]) {
+  const res = await api.post("/upload/summary", { data, columns })
+  return res.data.summary
+}

@@ -34,6 +34,7 @@ const AGGREGATIONS = [
   { value: "max",    label: "Max" },
 ]
 
+
 const DEFAULT_AXIS: AxisConfig = {
   yMin: "", yMax: "", yTickInterval: "", binSize: ""
 }
@@ -111,6 +112,7 @@ export default function ChartBuilder({ columns, preview }: Props) {
   useEffect(() => {
     if (chartType !== "line") return
     if (!groupBy || yColumns.length === 0) return
+    
 
     const run = async () => {
       setLoading(true)
@@ -131,6 +133,8 @@ export default function ChartBuilder({ columns, preview }: Props) {
     }
     run()
   }, [chartType, groupBy, yColumns, aggregation, preview])
+
+  
 
   return (
     <div className="mt-10">
@@ -215,6 +219,8 @@ export default function ChartBuilder({ columns, preview }: Props) {
         axisConfig={axisConfig}
         xIsNumeric={xIsNumeric}
         columns={columns}
+        preview={preview}
+        yColumns={yColumns}
         onAxisChange={setAxisConfig}
       />
 

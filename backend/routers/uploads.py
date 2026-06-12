@@ -97,3 +97,36 @@ def aggregate_data(req: AggregateRequest):
         "aggregation": req.aggregation,
         "bin_size": req.bin_size,
     }
+
+
+class SummaryRequest(BaseModel):
+    data: list[dict]
+    columns: list[str]
+
+@router.post("/summary")
+def get_summary(req: SummaryRequest):
+    df = pd.DataFrame(req.data)
+
+    # convert numeric columns
+    for col in df.columns:
+        try:
+            df[col] = pd.to_numeric(df[col])
+        except (ValueError, TypeError):
+            pass
+
+    result = {}
+    for col in req.columns:
+        if col not in df.columns:
+            continue
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        result[col] = {
+            "min":    round(float(df[col].min()), 2),
+            "max":    round(float(df[col].max()), 2),
+            "mean":   round(float(df[col].mean()), 2),
+            "median": round(float(df[col].median()), 2),
+            "sd":     round(float(df[col].std()), 2),
+            "count":  int(df[col].count()),
+        }
+
+    return { "summary": result }

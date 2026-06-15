@@ -1,7 +1,14 @@
-import Upload from "./pages/Upload"
+import { BrowserRouter, Routes, Route } from "react-router-dom"
+import UploadPage from "./pages/UploadPage"
+import ChartPage from "./pages/ChartPage"
 
-function App() {
-  return <Upload />
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<UploadPage />} />
+        <Route path="/chart" element={<ChartPage />} />
+      </Routes>
+    </BrowserRouter>
+  )
 }
-
-export default App

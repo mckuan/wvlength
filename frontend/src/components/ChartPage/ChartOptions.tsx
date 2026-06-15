@@ -1,6 +1,6 @@
 // settings panel for chart options like axis limits, color modes, etc.
 import { useState, useEffect } from "react"
-import { getSummary } from "../lib/datasets"
+import { getSummary } from "../../lib/datasets"
 
 export interface AxisConfig {
   yMin: string

@@ -2,7 +2,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend
 } from "recharts"
-import type { AxisConfig } from "../ChartOptions"
+import type { AxisConfig } from "../ChartPage/ChartOptions"
 
 interface Props {
   data: Record<string, string | number>[]

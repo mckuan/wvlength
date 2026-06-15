@@ -1,10 +1,10 @@
 //parent of ChartOptions and individual chart views, manages/renders state for both
 import { useState, useEffect } from "react"
-import BarChartView from "./charts/BarChartView"
-import LineChartView from "./charts/LineChartView"
+import BarChartView from "../charts/BarChartView"
+import LineChartView from "../charts/LineChartView"
 import ChartOptions from "./ChartOptions"
 import type { AxisConfig } from "./ChartOptions"
-import { aggregateMultiple } from "../lib/datasets"
+import { aggregateMultiple } from "../../lib/datasets"
 
 interface Column {
   name: string
@@ -192,7 +192,9 @@ export default function ChartBuilder({ columns, preview }: Props) {
           {chartType === "bar" ? "Y Columns (grouped bars)" : "Y Columns (lines)"}
         </label>
         <div className="flex flex-wrap gap-2">
-          {columns.map(col => (
+          {columns
+          .filter(col => col.type.includes("int") || col.type.includes("float"))
+          .map(col => (
             <button
               key={col.name}
               onClick={() => {

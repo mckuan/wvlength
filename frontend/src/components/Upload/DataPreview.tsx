@@ -29,7 +29,7 @@ export default function DataPreview({ filename, rows, columns, preview }: Props)
       </div>
 
       {/* Preview table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-x-auto overflow-y-auto rounded-lg border border-gray-200" style={{ maxHeight: '400px' }}>
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50">
             <tr>

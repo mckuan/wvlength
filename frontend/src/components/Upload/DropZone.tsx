@@ -21,7 +21,7 @@ export default function DropZone({ onUpload, loading }: Props) {
   })
 
   return (
-    <div
+    <><div
       {...getRootProps()}
       className={`border-2 border-dashed rounded-xl p-16 text-center cursor-pointer transition-colors
         ${isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-gray-400"}
@@ -39,6 +39,8 @@ export default function DropZone({ onUpload, loading }: Props) {
           <p className="text-gray-400 text-sm mt-1">or click to browse</p>
         </div>
       )}
-    </div>
+    </div><div className="mt-4 text-gray-500 text-sm">
+        Past uploads:
+      </div></>
   )
 }

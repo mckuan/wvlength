@@ -1,10 +1,13 @@
+import { useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import DataPreview from "../components/PreviewPage/DataPreview"
+import DataTransforms from "../components/PreviewPage/DataTransform"
 
 export default function PreviewPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const result = location.state?.dataset
+  const [transformedDataset, setTransformedDataset] = useState(result)
 
   if (!result) {
     navigate("/")
@@ -12,11 +15,11 @@ export default function PreviewPage() {
   }
 
   const handleContinue = () => {
-    navigate("/chart", { state: { dataset: result } })
+    navigate("/chart", { state: { dataset: transformedDataset } })
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-12">
+    <div className="max-w-5xl mx-auto px-6 py-12">
       <button
         onClick={() => navigate("/")}
         className="text-sm text-gray-400 hover:text-gray-600 mb-6 inline-block"
@@ -24,6 +27,11 @@ export default function PreviewPage() {
         ← Back to upload
       </button>
       <DataPreview {...result} />
+      <DataTransforms
+        fileId={result.file_id}
+        columns={result.columns}
+        onTransform={setTransformedDataset}
+      />
       <div className="mt-6 flex justify-end">
         <button
           onClick={handleContinue}

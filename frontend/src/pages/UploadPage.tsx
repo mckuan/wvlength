@@ -2,7 +2,8 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import axios from "axios"
 import DropZone from "../components/Upload/DropZone"
-import DataPreview from "../components/Upload/DataPreview"
+import DataPreview from "../components/PreviewPage/DataPreview"
+import PastUploads from "../components/Upload/PastUploads"
 
 interface Column {
   name: string
@@ -12,6 +13,7 @@ interface Column {
 }
 
 interface UploadResult {
+  file_id: string
   filename: string
   rows: number
   columns: Column[]
@@ -23,6 +25,7 @@ export default function UploadPage() {
   const [result, setResult] = useState<UploadResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   const handleUpload = async (file: File) => {
     setLoading(true)
@@ -34,15 +37,30 @@ export default function UploadPage() {
 
     try {
       const res = await axios.post("http://localhost:8000/upload/", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
-      setResult(res.data)  // show preview, don't navigate yet
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+      setRefreshTrigger(t => t + 1)
+      navigate("/preview", { state: { dataset: res.data } })
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.detail) {
         setError(err.response.data.detail)
       } else {
         setError("Upload failed — make sure your backend is running.")
       }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handlePastUpload = async (file_id: string) => {
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await axios.get(`http://localhost:8000/upload/files/${file_id}/preview`)
+      navigate("/preview", { state: { dataset: res.data } })
+    } catch (err) {
+      setError("Failed to load past upload.")
     } finally {
       setLoading(false)
     }
@@ -57,6 +75,7 @@ export default function UploadPage() {
     <div className="max-w-4xl mx-auto px-6 py-12">
       <h1 className="text-2xl font-bold mb-8">WVLENGTH</h1>
       <DropZone onUpload={handleUpload} loading={loading} />
+      <PastUploads onSelect={handlePastUpload} refreshTrigger={refreshTrigger} />
       {error && <p className="mt-4 text-red-500">{error}</p>}
       {result && (
         <>

@@ -78,20 +78,28 @@ async def upload_csv(file: UploadFile = File(...)):
     file_id = _file_id(file.filename)
     save_df(file_id, df, file.filename)
 
+    # enforce 5-file queue — evict oldest
+    all_files = []
+    for name in os.listdir(STORAGE_DIR):
+        if name.endswith(".meta.json"):
+            with open(os.path.join(STORAGE_DIR, name)) as f:
+                all_files.append(json.load(f))
+    all_files.sort(key=lambda m: m["uploaded_at"])  # oldest first
+    while len(all_files) > 5:
+        oldest = all_files.pop(0)
+        for path in [_parquet_path(oldest["file_id"]), _meta_path(oldest["file_id"])]:
+            if os.path.exists(path):
+                os.remove(path)
+
     columns = [{"name": col, "type": str(df[col].dtype)} for col in df.columns]
-    preview = df.fillna("").to_dict(orient="records") 
-    return {
-        "file_id": file_id,          # ← callers pass this to /aggregate and /summary
-        "filename": file.filename,
-        "rows": len(df),
-        "columns": columns,
-        "preview": preview,
-    }
+    preview = df.fillna("").to_dict(orient="records")
+    return {"file_id": file_id, "filename": file.filename, "rows": len(df), "columns": columns, "preview": preview}
 
 
 # ---------------------------------------------------------------------------
 # List stored files
 # ---------------------------------------------------------------------------
+
 
 @router.get("/files")
 def list_files():
@@ -102,6 +110,20 @@ def list_files():
                 files.append(json.load(f))
     files.sort(key=lambda m: m.get("uploaded_at", 0), reverse=True)
     return {"files": files}
+
+
+@router.get("/files/{file_id}/preview")
+def get_preview(file_id: str):
+    df = load_df(file_id)
+    meta = load_meta(file_id)
+    preview = df.fillna("").to_dict(orient="records")
+    return {
+        "file_id": file_id,
+        "filename": meta["filename"],
+        "rows": meta["rows"],
+        "columns": meta["columns"],
+        "preview": preview,
+    }
 
 
 # ---------------------------------------------------------------------------

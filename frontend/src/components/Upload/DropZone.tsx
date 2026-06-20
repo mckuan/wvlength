@@ -39,8 +39,6 @@ export default function DropZone({ onUpload, loading }: Props) {
           <p className="text-gray-400 text-sm mt-1">or click to browse</p>
         </div>
       )}
-    </div><div className="mt-4 text-gray-500 text-sm">
-        Past uploads:
-      </div></>
+    </div></>
   )
 }

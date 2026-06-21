@@ -14,6 +14,10 @@ export default function PreviewPage() {
     return null
   }
 
+  const handleTransform = (transformed: object) => {
+    setTransformedDataset({ ...result, ...transformed })
+  }
+
   const handleContinue = () => {
     navigate("/chart", { state: { dataset: transformedDataset } })
   }
@@ -26,11 +30,11 @@ export default function PreviewPage() {
       >
         ← Back to upload
       </button>
-      <DataPreview {...result} />
+      <DataPreview {...transformedDataset} />
       <DataTransforms
         fileId={result.file_id}
         columns={result.columns}
-        onTransform={setTransformedDataset}
+        onTransform={handleTransform}
       />
       <div className="mt-6 flex justify-end">
         <button

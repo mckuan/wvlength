@@ -78,6 +78,51 @@ def aggregate_data(req: AggregateRequest):
     }
 
 
+class AggregateMultiRequest(BaseModel):
+    file_id:      Optional[str]        = None
+    data:         Optional[list[dict]] = None
+    group_by:     str
+    aggregations: dict[str, str]
+    
+@router.post("/aggregate_multi")
+def aggregate_multi(req: AggregateMultiRequest):
+    if req.file_id:
+        df = load_df(req.file_id)
+    elif req.data is not None:
+        df = pd.DataFrame(req.data)
+    else:
+        raise HTTPException(status_code=400, detail="Provide either 'file_id' or 'data'")
+
+    for col in df.columns:
+        try:
+            df[col] = pd.to_numeric(df[col])
+        except (ValueError, TypeError):
+            pass
+
+    if req.group_by not in df.columns:
+        raise HTTPException(status_code=400, detail=f"Column '{req.group_by}' not found")
+
+    agg_map = {"mean": "mean", "sum": "sum", "count": "count", "median": "median", "min": "min", "max": "max"}
+
+    agg_spec = {}
+    for col, agg in req.aggregations.items():
+        if col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{col}' not found")
+        if agg not in agg_map:
+            raise HTTPException(status_code=400, detail=f"Unknown aggregation '{agg}'")
+        agg_spec[col] = agg_map[agg]
+
+    df["_group"] = df[req.group_by]
+    result = df.groupby("_group", dropna=True).agg(agg_spec).round(2).reset_index()
+    result = result.rename(columns={"_group": req.group_by})
+
+    return {
+        "data": result.to_dict(orient="records"),
+        "group_by": req.group_by,
+        "aggregations": req.aggregations,
+    }
+
+
 class SummaryRequest(BaseModel):
     file_id:  Optional[str]        = None
     data:     Optional[list[dict]] = None

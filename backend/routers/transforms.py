@@ -83,7 +83,7 @@ class AggregateMultiRequest(BaseModel):
     data:         Optional[list[dict]] = None
     group_by:     str
     aggregations: dict[str, str]
-    
+
 @router.post("/aggregate_multi")
 def aggregate_multi(req: AggregateMultiRequest):
     if req.file_id:
@@ -122,6 +122,79 @@ def aggregate_multi(req: AggregateMultiRequest):
         "aggregations": req.aggregations,
     }
 
+class SplitCoordinatesRequest(BaseModel):
+    file_id: str
+    columns: list[str]
+
+@router.post("/split_coordinates")
+def split_coordinates(req: SplitCoordinatesRequest):
+    df = load_df(req.file_id)
+
+    print("ACTUAL COLUMNS:", df.columns.tolist())  # add this
+    print("REQUESTED:", req.columns)
+
+    for col in req.columns:
+        if col not in df.columns:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Column '{col}' not found"
+            )
+
+    def parse_coord(val):
+        try:
+            cleaned = str(val).strip().strip("()[] ")
+            parts = [float(p.strip()) for p in cleaned.split(",")]
+            return parts
+        except Exception:
+            return []
+
+    for col in req.columns:
+
+        parsed = df[col].apply(parse_coord)
+
+        max_dims = parsed.apply(len).max()
+
+        axis_names = ["x", "y", "z", "w", "v", "u"]
+
+        for i in range(max_dims):
+
+            axis = (
+                axis_names[i]
+                if i < len(axis_names)
+                else f"dim{i+1}"
+            )
+
+            new_col = f"{col}_{axis}"
+
+            df[new_col] = parsed.apply(
+                lambda p: p[i] if i < len(p) else None
+            )
+
+        df = df.drop(columns=[col])
+
+    from routers.uploads import save_df, load_meta
+
+    meta = load_meta(req.file_id)
+
+    save_df(req.file_id, df, meta["filename"])
+
+    columns = [
+        {
+            "name": c,
+            "type": str(df[c].dtype)
+        }
+        for c in df.columns
+    ]
+
+    preview = df.fillna("").to_dict(orient="records")
+
+    return {
+        "file_id": req.file_id,
+        "filename": meta["filename"],
+        "rows": len(df),
+        "columns": columns,
+        "preview": preview,
+    }
 
 class SummaryRequest(BaseModel):
     file_id:  Optional[str]        = None

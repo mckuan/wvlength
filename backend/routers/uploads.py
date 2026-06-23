@@ -52,7 +52,9 @@ def load_df(file_id: str) -> pd.DataFrame:
     path = _parquet_path(file_id)
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail=f"File '{file_id}' not found in storage")
-    return pd.read_parquet(path)
+    df = pd.read_parquet(path)
+    df.columns = df.columns.str.strip()
+    return df
 
 
 def load_meta(file_id: str) -> dict:
@@ -74,6 +76,7 @@ async def upload_csv(file: UploadFile = File(...)):
 
     contents = await file.read()
     df = pd.read_csv(io.BytesIO(contents))
+    df.columns = df.columns.str.strip()
 
     file_id = _file_id(file.filename)
     save_df(file_id, df, file.filename)

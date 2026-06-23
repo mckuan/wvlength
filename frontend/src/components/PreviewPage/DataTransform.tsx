@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import axios from "axios"
 
 interface Column {
@@ -14,6 +14,7 @@ interface Props {
 }
 
 const AGGS = ["mean", "sum", "median", "min", "max", "count"]
+const STRING_AGGS = ["first", "last", "majority"]
 
 function isNumeric(col: Column) {
   return col.type.includes("int") || col.type.includes("float")
@@ -33,11 +34,17 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
   const numericCols = columns.filter(isNumeric)
   const coordCols = detectCoordColumns(columns, preview)
 
+  // string cols excludes the groupBy col — computed after groupBy state is defined
+  const [groupBy, setGroupBy] = useState(columns[0]?.name ?? "")
+  const stringCols = columns.filter(c => !isNumeric(c) && c.name !== groupBy)
+
   // group & aggregate
   const [aggOpen, setAggOpen] = useState(false)
-  const [groupBy, setGroupBy] = useState(columns[0]?.name ?? "")
   const [aggPerCol, setAggPerCol] = useState<Record<string, string>>(
     Object.fromEntries(numericCols.map(c => [c.name, "mean"]))
+  )
+  const [strAggPerCol, setStrAggPerCol] = useState<Record<string, string>>(
+    Object.fromEntries(stringCols.map(c => [c.name, "first"]))
   )
   const [aggLoading, setAggLoading] = useState(false)
   const [aggError, setAggError] = useState<string | null>(null)
@@ -50,6 +57,20 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
   const [splitError, setSplitError] = useState<string | null>(null)
   const [splitApplied, setSplitApplied] = useState(false)
 
+  // keep selectedCols in sync if columns prop changes
+  useEffect(() => {
+    setSelectedCols(detectCoordColumns(columns, preview))
+  }, [columns])
+
+  // when groupBy changes, remove it from strAggPerCol if present
+  useEffect(() => {
+    setStrAggPerCol(
+      Object.fromEntries(
+        columns.filter(c => !isNumeric(c) && c.name !== groupBy).map(c => [c.name, "first"])
+      )
+    )
+  }, [groupBy, columns])
+
   const setAll = (agg: string) => {
     setAggPerCol(Object.fromEntries(numericCols.map(c => [c.name, agg])))
     setAggApplied(false)
@@ -60,69 +81,64 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
     setAggApplied(false)
   }
 
-  const handleAggregate = async () => {
-    setAggLoading(true)
-    setAggError(null)
-    try {
-        console.log("REQUEST SENT:", {
-        file_id: fileId,
-        columns: selectedCols,
-        })
-      const res = await axios.post("http://localhost:8000/transforms/aggregate_multi", {
-        file_id: fileId,
-        group_by: groupBy,
-        aggregations: aggPerCol,
-      })
-      const newPreview = res.data.data
-      const newColumns = [
-        { name: groupBy, type: columns.find(c => c.name === groupBy)?.type ?? "object" },
-        ...numericCols.map(c => ({ name: c.name, type: "float64" })),
-      ]
-      onTransform({ file_id: fileId, columns: newColumns, preview: newPreview, rows: newPreview.length })
-      setAggApplied(true)
-    } catch {
-      setAggError("Aggregation failed — check the backend.")
-    } finally {
-      setAggLoading(false)
-    }
+  const setOneStr = (col: string, agg: string) => {
+    setStrAggPerCol(prev => ({ ...prev, [col]: agg }))
+    setAggApplied(false)
   }
 
+  const handleAggregate = async () => {
+  setAggLoading(true)
+  setAggError(null)
+  try {
+    const res = await axios.post("http://localhost:8000/transforms/aggregate_multi", {
+      file_id: fileId,
+      group_by: groupBy,
+      aggregations: { ...aggPerCol, ...strAggPerCol },
+    })
+    const newPreview = res.data.data
+    const newColumns = Object.keys(newPreview[0]).map(name => ({
+      name,
+      type: numericCols.find(c => c.name === name) ? "float64" : "object"
+    }))
+    onTransform({ file_id: fileId, columns: newColumns, preview: newPreview, rows: newPreview.length })
+    setAggApplied(true)
+  } catch (err: unknown) {         // ← change catch {} to this
+    if (axios.isAxiosError(err)) {
+      console.log("STATUS:", err.response?.status)
+      console.log("DETAIL:", JSON.stringify(err.response?.data))
+    }
+    setAggError("Aggregation failed — check the backend.")
+  } finally {
+    setAggLoading(false)
+  }
+}
   const handleAggReset = () => {
     setAggApplied(false)
     setAggPerCol(Object.fromEntries(numericCols.map(c => [c.name, "mean"])))
+    setStrAggPerCol(Object.fromEntries(stringCols.map(c => [c.name, "first"])))
   }
 
   const handleSplit = async () => {
-  setSplitLoading(true)
-  setSplitError(null)
-
-  try {
-    console.log("REQUEST SENT:", {
-    file_id: fileId,
-    columns: selectedCols,
-    })
-    const res = await axios.post(
-      "http://localhost:8000/transforms/split_coordinates",
-      {
+    setSplitLoading(true)
+    setSplitError(null)
+    try {
+      const res = await axios.post("http://localhost:8000/transforms/split_coordinates", {
         file_id: fileId,
         columns: selectedCols,
-      }
-    )
-
-    onTransform({
-      file_id: res.data.file_id,
-      columns: res.data.columns,
-      preview: res.data.preview,
-      rows: res.data.rows,
-    })
-
-    setSplitApplied(true)
-  } catch {
-    setSplitError("Split failed — check the backend.")
-  } finally {
-    setSplitLoading(false)
+      })
+      onTransform({
+        file_id: res.data.file_id,
+        columns: res.data.columns,
+        preview: res.data.preview,
+        rows: res.data.rows,
+      })
+      setSplitApplied(true)
+    } catch {
+      setSplitError("Split failed — check the backend.")
+    } finally {
+      setSplitLoading(false)
+    }
   }
-}
 
   return (
     <div className="mt-8">
@@ -166,7 +182,7 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
               </div>
 
               <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-gray-50 rounded-lg flex-wrap">
-                <span className="text-xs text-gray-500 mr-1">Apply to all:</span>
+                <span className="text-xs text-gray-500 mr-1">Apply to all numeric:</span>
                 {AGGS.map(agg => (
                   <button
                     key={agg}
@@ -201,6 +217,31 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
                               className={`text-xs px-3 py-1 rounded-full border transition-colors
                                 ${aggPerCol[col.name] === agg
                                   ? "bg-indigo-500 text-white border-indigo-500"
+                                  : "border-gray-200 text-gray-500 hover:border-gray-400"
+                                }`}
+                            >
+                              {agg}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {stringCols.map(col => (
+                    <tr key={col.name} className="border-t border-gray-100">
+                      <td className="py-2 pl-1">
+                        <span className="text-xs font-medium text-gray-700">{col.name}</span>
+                        <span className="ml-2 text-xs text-gray-400 font-mono">string</span>
+                      </td>
+                      <td className="py-2">
+                        <div className="flex gap-1.5 flex-wrap">
+                          {STRING_AGGS.map(agg => (
+                            <button
+                              key={agg}
+                              onClick={() => setOneStr(col.name, agg)}
+                              className={`text-xs px-3 py-1 rounded-full border transition-colors
+                                ${strAggPerCol[col.name] === agg
+                                  ? "bg-violet-500 text-white border-violet-500"
                                   : "border-gray-200 text-gray-500 hover:border-gray-400"
                                 }`}
                             >
@@ -260,38 +301,28 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
                 <p className="text-xs text-gray-400 mt-3 mb-4">
                   Detected columns with coordinate values like (x, y, z).
                 </p>
-
                 <div className="mb-4">
-                    <label className="block text-xs text-gray-500 mb-2">
-                        Coordinate columns
-                    </label>
-
-                    <div className="space-y-2">
-                        {coordCols.map(col => (
-                        <label
-                            key={col}
-                            className="flex items-center gap-2 text-sm"
-                        >
-                            <input
-                            type="checkbox"
-                            checked={selectedCols.includes(col)}
-                            onChange={e => {
-                                if (e.target.checked) {
-                                setSelectedCols(prev => [...prev, col])
-                                } else {
-                                setSelectedCols(prev =>
-                                    prev.filter(c => c !== col)
-                                )
-                                }
-                                setSplitApplied(false)
-                            }}
-                            />
-                            {col}
-                        </label>
-                        ))}
-                    </div>
+                  <label className="block text-xs text-gray-500 mb-2">Coordinate columns</label>
+                  <div className="space-y-2">
+                    {coordCols.map(col => (
+                      <label key={col} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedCols.includes(col)}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setSelectedCols(prev => [...prev, col])
+                            } else {
+                              setSelectedCols(prev => prev.filter(c => c !== col))
+                            }
+                            setSplitApplied(false)
+                          }}
+                        />
+                        {col}
+                      </label>
+                    ))}
+                  </div>
                 </div>
-
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleSplit}

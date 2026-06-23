@@ -119,9 +119,11 @@ def aggregate_multi(req: AggregateMultiRequest):
 
     agg_map = {"mean": "mean", "sum": "sum", "count": "count",
                "median": "median", "min": "min", "max": "max"}
-
+    
     agg_spec = {}
     for col, agg in req.aggregations.items():
+        if col == req.group_by:
+            continue
         if col not in df.columns:
             raise HTTPException(status_code=400, detail=f"Column '{col}' not found")
         if agg in STRING_AGGS:
@@ -140,6 +142,11 @@ def aggregate_multi(req: AggregateMultiRequest):
     numeric_cols = result.select_dtypes(include="number").columns
     for col in numeric_cols:
         result[col] = result[col].round(2)
+
+    if req.file_id:
+        from routers.uploads import save_df, load_meta
+        meta = load_meta(req.file_id)
+        save_df(req.file_id, result, meta["filename"])
 
     return {
         "data":         result.to_dict(orient="records"),
@@ -160,12 +167,11 @@ def split_coordinates(req: SplitCoordinatesRequest):
     print("ACTUAL COLUMNS:", df.columns.tolist())
     print("REQUESTED:", req.columns)
 
-    for col in req.columns:
-        if col not in df.columns:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Column '{col}' not found"
-            )
+    existing = [col for col in req.columns if col in df.columns]
+    missing  = [col for col in req.columns if col not in df.columns]
+    if missing:
+        print(f"Skipping already-split columns: {missing}")
+
 
     def parse_coord(val):
         try:
@@ -175,7 +181,7 @@ def split_coordinates(req: SplitCoordinatesRequest):
         except Exception:
             return []
 
-    for col in req.columns:
+    for col in existing:
         parsed = df[col].apply(parse_coord)
         max_dims = parsed.apply(len).max()
         axis_names = ["x", "y", "z", "w", "v", "u"]
@@ -183,7 +189,8 @@ def split_coordinates(req: SplitCoordinatesRequest):
         for i in range(max_dims):
             axis = axis_names[i] if i < len(axis_names) else f"dim{i+1}"
             new_col = f"{col}_{axis}"
-            df[new_col] = parsed.apply(lambda p, i=i: p[i] if i < len(p) else None)
+            result = parsed.apply(lambda p, i=i: p[i] if i < len(p) else None)
+            df[new_col] = pd.to_numeric(result, errors="coerce")
 
         df = df.drop(columns=[col])
 
@@ -194,6 +201,7 @@ def split_coordinates(req: SplitCoordinatesRequest):
 
     columns = [{"name": c, "type": str(df[c].dtype)} for c in df.columns]
     preview = df.fillna("").to_dict(orient="records")
+
 
     return {
         "file_id":  req.file_id,

@@ -15,7 +15,7 @@ export default function PreviewPage() {
   }
 
   const handleTransform = (transformed: object) => {
-    setTransformedDataset({ ...result, ...transformed })
+    setTransformedDataset((prev: object) => ({ ...prev, ...transformed }))
   }
 
   const handleContinue = () => {
@@ -32,11 +32,11 @@ export default function PreviewPage() {
       </button>
       <DataPreview {...transformedDataset} />
       <DataTransforms
-        fileId={result.file_id}
-        columns={result.columns}
-        preview={result.preview}
+        fileId={transformedDataset.file_id}
+        columns={transformedDataset.columns}
+        preview={transformedDataset.preview}
         onTransform={handleTransform}
-       />
+      />
       <div className="mt-6 flex justify-end">
         <button
           onClick={handleContinue}

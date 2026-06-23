@@ -59,17 +59,18 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
 
   // keep selectedCols in sync if columns prop changes
   useEffect(() => {
-    setSelectedCols(detectCoordColumns(columns, preview))
-  }, [columns])
+  const detected = detectCoordColumns(columns, preview)
+  setSelectedCols(detected)
+  setSplitApplied(false)
+}, [columns, preview])
 
   // when groupBy changes, remove it from strAggPerCol if present
   useEffect(() => {
-    setStrAggPerCol(
-      Object.fromEntries(
-        columns.filter(c => !isNumeric(c) && c.name !== groupBy).map(c => [c.name, "first"])
-      )
-    )
-  }, [groupBy, columns])
+  setAggPerCol(Object.fromEntries(numericCols.map(c => [c.name, "mean"])))
+  setStrAggPerCol(Object.fromEntries(
+    columns.filter(c => !isNumeric(c) && c.name !== groupBy).map(c => [c.name, "first"])
+  ))
+}, [groupBy, columns])
 
   const setAll = (agg: string) => {
     setAggPerCol(Object.fromEntries(numericCols.map(c => [c.name, agg])))
@@ -90,6 +91,12 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
   setAggLoading(true)
   setAggError(null)
   try {
+    const payload = {
+      file_id: fileId,
+      group_by: groupBy,
+      aggregations: { ...aggPerCol, ...strAggPerCol },
+    }
+    console.log("AGG PAYLOAD:", JSON.stringify(payload))
     const res = await axios.post("http://localhost:8000/transforms/aggregate_multi", {
       file_id: fileId,
       group_by: groupBy,
@@ -122,6 +129,11 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
     setSplitLoading(true)
     setSplitError(null)
     try {
+    const payload = {
+        file_id: fileId,
+        columns: selectedCols,
+    }
+    console.log("SPLIT PAYLOAD:", JSON.stringify(payload))
       const res = await axios.post("http://localhost:8000/transforms/split_coordinates", {
         file_id: fileId,
         columns: selectedCols,
@@ -133,8 +145,14 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
         rows: res.data.rows,
       })
       setSplitApplied(true)
-    } catch {
-      setSplitError("Split failed — check the backend.")
+    } catch (err: unknown) {
+        if (axios.isAxiosError(err)) {
+            console.log("SPLIT STATUS:", err.response?.status)
+            console.log("SPLIT DETAIL:", JSON.stringify(err.response?.data))
+        } else {
+            console.log("SPLIT ERROR:", err)
+        }
+        setSplitError("Split failed — check the backend.")
     } finally {
       setSplitLoading(false)
     }

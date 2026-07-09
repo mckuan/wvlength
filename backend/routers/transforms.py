@@ -11,73 +11,6 @@ from routers.uploads import load_df
 router = APIRouter(prefix="/transforms", tags=["transforms"])
 
 
-# class AggregateRequest(BaseModel):
-#     file_id:     Optional[str]        = None
-#     data:        Optional[list[dict]] = None
-#     group_by:    str
-#     value_col:   str
-#     aggregation: str
-#     bin_size:    Optional[float] = None
-
-
-# @router.post("/aggregate")
-# def aggregate_data(req: AggregateRequest):
-#     if req.file_id:
-#         df = load_df(req.file_id)
-#     elif req.data is not None:
-#         df = pd.DataFrame(req.data)
-#     else:
-#         raise HTTPException(status_code=400, detail="Provide either 'file_id' or 'data'")
-
-#     for col in df.columns:
-#         try:
-#             df[col] = pd.to_numeric(df[col])
-#         except (ValueError, TypeError):
-#             pass
-
-#     if req.group_by not in df.columns:
-#         raise HTTPException(status_code=400, detail=f"Column '{req.group_by}' not found")
-#     if req.value_col not in df.columns:
-#         raise HTTPException(status_code=400, detail=f"Column '{req.value_col}' not found")
-
-#     if req.bin_size and pd.api.types.is_numeric_dtype(df[req.group_by]):
-#         col_min = df[req.group_by].min()
-#         col_max = df[req.group_by].max()
-#         bins = np.arange(col_min, col_max + req.bin_size, req.bin_size)
-#         labels = [f"{bins[i]:.4g}-{bins[i+1]:.4g}" for i in range(len(bins) - 1)]
-#         df["_group"] = pd.cut(
-#             df[req.group_by], bins=bins, labels=labels, right=False, include_lowest=True
-#         ).astype(str)
-#         group_col = "_group"
-#     else:
-#         group_col = req.group_by
-
-#     agg_map = {
-#         "mean":   lambda g: g.mean(),
-#         "sum":    lambda g: g.sum(),
-#         "count":  lambda g: g.count(),
-#         "median": lambda g: g.median(),
-#         "min":    lambda g: g.min(),
-#         "max":    lambda g: g.max(),
-#     }
-
-#     if req.aggregation not in agg_map:
-#         raise HTTPException(status_code=400, detail=f"Unknown aggregation '{req.aggregation}'")
-
-#     grouped = df.groupby(group_col, dropna=True)[req.value_col]
-#     result = agg_map[req.aggregation](grouped).reset_index()
-#     result.columns = ["x", "y"]
-#     result["y"] = result["y"].round(2)
-
-#     return {
-#         "data":        result.to_dict(orient="records"),
-#         "group_by":    req.group_by,
-#         "value_col":   req.value_col,
-#         "aggregation": req.aggregation,
-#         "bin_size":    req.bin_size,
-#     }
-
-
 def _majority(x):
     m = x.mode()
     if m.empty:
@@ -90,6 +23,121 @@ STRING_AGGS = {
     "last":     "last",
     "majority": _majority,
 }
+
+class NullInfoRequest(BaseModel):
+    file_id:      Optional[str]   = None
+    data:    Optional[list[dict]] = None
+
+
+@router.post("/null_info")
+def null_info(req: NullInfoRequest):
+    if req.file_id:
+        df = load_df(req.file_id)
+    elif req.data is not None:
+        df = pd.DataFrame(req.data)
+    else:
+        raise HTTPException(status_code=400, detail="Provide either 'file_id' or 'data'")
+ 
+    for col in df.columns:
+        try:
+            df[col] = pd.to_numeric(df[col])
+        except (ValueError, TypeError):
+            pass
+ 
+    result = []
+    for col in df.columns:
+        null_count = int(df[col].isnull().sum())
+        if null_count == 0:
+            continue
+        result.append({
+            "column":     col,
+            "null_count": null_count,
+            "total":      len(df),
+            "is_numeric": bool(pd.api.types.is_numeric_dtype(df[col])),
+        })
+ 
+    return {"nulls": result, "rows": len(df)}
+ 
+ 
+class FillSpec(BaseModel):
+    strategy: str          # "drop", "mean", "median", "mode", "fill", "ignore"
+    value:    Optional[str] = None   # used when strategy == "fill"
+ 
+class NullCleanRequest(BaseModel):
+    file_id:  Optional[str]        = None
+    data:     Optional[list[dict]] = None
+    columns:  dict[str, FillSpec]  # col -> spec
+ 
+ 
+@router.post("/clean_nulls")
+def clean_nulls(req: NullCleanRequest):
+    if req.file_id:
+        df = load_df(req.file_id)
+    elif req.data is not None:
+        df = pd.DataFrame(req.data)
+    else:
+        raise HTTPException(status_code=400, detail="Provide either 'file_id' or 'data'")
+ 
+    for col in df.columns:
+        try:
+            df[col] = pd.to_numeric(df[col])
+        except (ValueError, TypeError):
+            pass
+ 
+    drop_rows_mask = pd.Series([False] * len(df), index=df.index)
+ 
+    for col, spec in req.columns.items():
+        if col not in df.columns:
+            raise HTTPException(status_code=400, detail=f"Column '{col}' not found")
+ 
+        if spec.strategy == "ignore":
+            continue
+        elif spec.strategy == "drop":
+            drop_rows_mask |= df[col].isnull()
+        elif spec.strategy == "mean":
+            if not pd.api.types.is_numeric_dtype(df[col]):
+                raise HTTPException(status_code=400, detail=f"Column '{col}' is not numeric")
+            df[col] = df[col].fillna(df[col].mean())
+        elif spec.strategy == "median":
+            if not pd.api.types.is_numeric_dtype(df[col]):
+                raise HTTPException(status_code=400, detail=f"Column '{col}' is not numeric")
+            df[col] = df[col].fillna(df[col].median())
+        elif spec.strategy == "mode":
+            mode = df[col].mode()
+            if not mode.empty:
+                df[col] = df[col].fillna(mode.iloc[0])
+        elif spec.strategy == "fill":
+            if spec.value is None:
+                raise HTTPException(status_code=400, detail=f"No fill value for '{col}'")
+            fill = pd.to_numeric(spec.value, errors="ignore")
+            df[col] = df[col].fillna(fill)
+        elif spec.strategy == "ffill":
+            df[col] = df[col].ffill()
+        elif spec.strategy == "bfill":
+            df[col] = df[col].bfill()
+        elif spec.strategy == "interpolate":
+            if not pd.api.types.is_numeric_dtype(df[col]):
+                raise HTTPException(status_code=400, detail=f"Column '{col}' is not numeric")
+            df[col] = df[col].interpolate()
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown strategy '{spec.strategy}'")
+ 
+    df = df[~drop_rows_mask].reset_index(drop=True)
+ 
+    if req.file_id:
+        from routers.uploads import save_df, load_meta
+        meta = load_meta(req.file_id)
+        save_df(req.file_id, df, meta["filename"])
+ 
+    columns = [{"name": c, "type": str(df[c].dtype)} for c in df.columns]
+    preview  = df.fillna("").to_dict(orient="records")
+ 
+    return {
+        "file_id":  req.file_id,
+        "rows":     len(df),
+        "columns":  columns,
+        "preview":  preview,
+    }
 
 
 class AggregateMultiRequest(BaseModel):

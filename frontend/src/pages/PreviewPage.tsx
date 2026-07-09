@@ -18,32 +18,37 @@ export default function PreviewPage() {
     setTransformedDataset((prev: object) => ({ ...prev, ...transformed }))
   }
 
-  const handleContinue = () => {
-    navigate("/chart", { state: { dataset: transformedDataset } })
-  }
-
   return (
-    <div className="max-w-5xl mx-auto px-6 py-12">
-      <button
-        onClick={() => navigate("/")}
-        className="text-sm text-gray-400 hover:text-gray-600 mb-6 inline-block"
-      >
-        ← Back to upload
-      </button>
-      <DataPreview {...transformedDataset} />
-      <DataTransforms
-        fileId={transformedDataset.file_id}
-        columns={transformedDataset.columns}
-        preview={transformedDataset.preview}
-        onTransform={handleTransform}
-      />
-      <div className="mt-6 flex justify-end">
+    <div className="h-screen flex flex-col" style={{ background: "#E8EFF4" }}>
+
+      {/* ── Top bar ── */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 shrink-0">
         <button
-          onClick={handleContinue}
-          className="bg-indigo-500 text-white px-6 py-2 rounded-lg hover:bg-indigo-600 transition-colors"
+          onClick={() => navigate("/")}
+          className="text-sm #9DB6C9 hover:#5F7B94"
         >
-          Continue to Analysis →
+          ← Back to upload
         </button>
+      </div>
+
+      {/* ── Split pane ── */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* Left — data preview */}
+        <div className="flex-1 overflow-y-auto px-6 py-6 border-r border-gray-200">
+          <DataPreview {...transformedDataset} />
+        </div>
+
+        {/* Right — transforms */}
+        <div className="w-96 shrink-0 overflow-y-auto px-6 py-6">
+          <DataTransforms
+            fileId={transformedDataset.file_id}
+            columns={transformedDataset.columns}
+            preview={transformedDataset.preview}
+            onTransform={handleTransform}
+          />
+        </div>
+
       </div>
     </div>
   )

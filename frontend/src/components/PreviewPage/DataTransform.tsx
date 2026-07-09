@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import axios from "axios"
 
 interface Column {
@@ -6,15 +6,30 @@ interface Column {
   type: string
 }
 
+interface Dataset {
+  file_id: string
+  columns: Column[]
+  preview: Record<string, unknown>[]
+  rows: number
+}
+
 interface Props {
   fileId: string
   columns: Column[]
   preview: Record<string, unknown>[]
   onTransform: (dataset: object) => void
+  onContinue?: () => void
 }
 
 const AGGS = ["mean", "sum", "median", "min", "max", "count"]
 const STRING_AGGS = ["first", "last", "majority"]
+
+// ── Palette (Business Blue) ───────────────────────────────────────────────────
+// bg cream:  #F7F4F3
+// panel:     #E8EFF4
+// accent lt: #9DB6C9
+// accent:    #5F7B94
+// ink/dark:  #324E66
 
 function isNumeric(col: Column) {
   return col.type.includes("int") || col.type.includes("float")
@@ -30,110 +45,279 @@ function detectCoordColumns(columns: Column[], preview: Record<string, unknown>[
     .map(col => col.name)
 }
 
-export default function DataTransforms({ fileId, columns, preview, onTransform }: Props) {
-  const numericCols = columns.filter(isNumeric)
+type StepId = "nulls" | "split" | "aggregate" | "preview"
+
+interface StepMeta {
+  id: StepId
+  index: number
+  label: string
+}
+
+const STEP_ORDER: StepMeta[] = [
+  { id: "nulls", index: 1, label: "Clean nulls" },
+  { id: "split", index: 2, label: "Split coordinates" },
+  { id: "aggregate", index: 3, label: "Group & aggregate" },
+  { id: "preview", index: 4, label: "Preview & continue" },
+]
+
+// ── Step shell ────────────────────────────────────────────────────────────────
+
+function Step({
+  meta,
+  status,
+  summary,
+  children,
+}: {
+  meta: StepMeta
+  status: "done" | "active" | "upcoming" | "skipped"
+  summary?: React.ReactNode
+  children?: React.ReactNode
+}) {
+  const isActive = status === "active"
+  const isDone = status === "done"
+  const isSkipped = status === "skipped"
+
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <div
+          className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors"
+          style={{
+            background: isDone ? "#5F7B94" : isActive ? "#324E66" : "transparent",
+            color: isDone || isActive ? "#F7F4F3" : "#9DB6C9",
+            border: isDone || isActive ? "none" : "1.5px solid #9DB6C9",
+          }}
+        >
+          {isDone ? "✓" : meta.index}
+        </div>
+        <span
+          className="font-semibold text-[15px]"
+          style={{ color: isActive ? "#324E66" : isDone ? "#324E66" : "#9DB6C9" }}
+        >
+          {meta.label}
+        </span>
+        {isDone && !isSkipped && (
+          <span
+            className="text-xs px-2 py-0.5 rounded-full font-medium ml-1"
+            style={{ background: "#E8EFF4", color: "#5F7B94" }}
+          >
+            applied
+          </span>
+        )}
+        {isSkipped && (
+          <span
+            className="text-xs px-2 py-0.5 rounded-full font-medium ml-1"
+            style={{ background: "#F7F4F3", color: "#9DB6C9" }}
+          >
+            skipped
+          </span>
+        )}
+      </div>
+
+      {isDone && summary && (
+        <div className="ml-9 mt-1.5 text-xs" style={{ color: "#5F7B94" }}>
+          {summary}
+        </div>
+      )}
+
+      {isActive && children && (
+        <div className="ml-9 mt-3 flex flex-col gap-3">{children}</div>
+      )}
+
+      {meta.index < 4 && (
+        <div className="ml-3 my-3 h-6 w-px" style={{ background: "#E8EFF4" }} />
+      )}
+    </div>
+  )
+}
+
+// ── Pill button ───────────────────────────────────────────────────────────────
+
+function Pill({ label, active, activeStyle, onClick }: {
+  label: string
+  active: boolean
+  activeStyle?: React.CSSProperties
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="text-xs px-2.5 py-1 rounded-full border transition-colors"
+      style={
+        active
+          ? { background: "#5F7B94", color: "#F7F4F3", borderColor: "#5F7B94", ...activeStyle }
+          : { borderColor: "#E8EFF4", color: "#5F7B94", background: "transparent" }
+      }
+    >
+      {label}
+    </button>
+  )
+}
+
+// ── Action row ────────────────────────────────────────────────────────────────
+
+function ActionRow({ onApply, onSkip, loading, error, applyLabel }: {
+  onApply: () => void
+  onSkip: () => void
+  loading: boolean
+  error: string | null
+  applyLabel: string
+}) {
+  return (
+    <div className="flex items-center gap-3 pt-1">
+      <button
+        onClick={onApply}
+        disabled={loading}
+        className="px-4 py-1.5 text-xs font-medium rounded-lg disabled:opacity-40 transition-colors"
+        style={{ background: "#324E66", color: "#F7F4F3" }}
+      >
+        {loading ? "Running..." : applyLabel}
+      </button>
+      <button
+        onClick={onSkip}
+        className="text-xs underline underline-offset-2"
+        style={{ color: "#9DB6C9" }}
+      >
+        skip
+      </button>
+      {error && <p className="text-xs" style={{ color: "#b45f5f" }}>{error}</p>}
+    </div>
+  )
+}
+
+function ColRow({ name, type, children }: { name: string; type: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs font-medium" style={{ color: "#324E66" }}>{name}</span>
+        <span className="text-xs font-mono" style={{ color: "#9DB6C9" }}>{type}</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
+    </div>
+  )
+}
+
+// ── Null cleaner types ───────────────────────────────────────────────────────
+
+interface NullInfo {
+  column: string
+  null_count: number
+  total: number
+  is_numeric: boolean
+}
+
+interface FillSpec {
+  strategy: "drop" | "mean" | "median" | "mode" | "ffill" | "bfill" | "interpolate" | "fill" | "ignore"
+  value?: string
+}
+
+const NULL_STRATEGIES: FillSpec["strategy"][] = ["ignore", "drop", "ffill", "bfill", "mode", "mean", "median", "interpolate", "fill"]
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export default function DataTransforms({ fileId, columns, preview, onTransform, onContinue }: Props) {
+  // Keep the ORIGINAL dataset around so "start over" can truly reset everything.
+  const originalRef = useRef<Dataset>({ file_id: fileId, columns, preview, rows: preview.length })
+
+  const [currentStep, setCurrentStep] = useState<StepId>("nulls")
+  const [stepStatus, setStepStatus] = useState<Record<StepId, "done" | "active" | "upcoming" | "skipped">>({
+    nulls: "active",
+    split: "upcoming",
+    aggregate: "upcoming",
+    preview: "upcoming",
+  })
+  const [summaries, setSummaries] = useState<Record<StepId, React.ReactNode>>({
+    nulls: null, split: null, aggregate: null, preview: null,
+  })
+
+  const goTo = (step: StepId, prevStatus: "done" | "skipped", summary?: React.ReactNode) => {
+    setStepStatus(prev => ({ ...prev, [currentStep]: prevStatus }))
+    if (summary !== undefined) {
+      setSummaries(prev => ({ ...prev, [currentStep]: summary }))
+    }
+    const idx = STEP_ORDER.findIndex(s => s.id === step)
+    setStepStatus(prev => {
+      const next = { ...prev, [currentStep]: prevStatus }
+      next[step] = "active"
+      return next
+    })
+    setCurrentStep(step)
+  }
+
+  // ── Null cleaner state ──
+  const [nulls, setNulls] = useState<NullInfo[]>([])
+  const [nullsLoading, setNullsLoading] = useState(true)
+  const [specs, setSpecs] = useState<Record<string, FillSpec>>({})
+  const [nullApplying, setNullApplying] = useState(false)
+  const [nullError, setNullError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setNullsLoading(true)
+    axios.post("http://localhost:8000/transforms/null_info", { file_id: originalRef.current.file_id })
+      .then(res => {
+        const info: NullInfo[] = res.data.nulls
+        setNulls(info)
+        setSpecs(Object.fromEntries(info.map(n => [n.column, { strategy: "ignore" as const }])))
+        // Auto-skip step 1 if there are no nulls at all.
+        if (info.length === 0) {
+          setStepStatus(prev => ({ ...prev, nulls: "skipped", split: "active" }))
+          setCurrentStep("split")
+        }
+      })
+      .catch(() => setNullError("Could not load null info."))
+      .finally(() => setNullsLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const setOne = (col: string, strategy: FillSpec["strategy"]) => {
+    setSpecs(prev => ({ ...prev, [col]: { ...prev[col], strategy } }))
+  }
+  const setValue = (col: string, value: string) => {
+    setSpecs(prev => ({ ...prev, [col]: { ...prev[col], value } }))
+  }
+
+  const handleApplyNulls = async () => {
+    setNullApplying(true)
+    setNullError(null)
+    try {
+      const res = await axios.post("http://localhost:8000/transforms/clean_nulls", {
+        file_id: originalRef.current.file_id,
+        columns: specs,
+      })
+      onTransform({
+        file_id: res.data.file_id,
+        columns: res.data.columns,
+        preview: res.data.preview,
+        rows: res.data.rows,
+      })
+      const touched = Object.entries(specs).filter(([, s]) => s.strategy !== "ignore")
+      const summary = touched.length
+        ? touched.map(([col, s]) => `${col} — ${s.strategy}${s.strategy === "fill" && s.value ? ` "${s.value}"` : ""} applied`).join(", ")
+        : "No changes made"
+      goTo("split", "done", summary)
+    } catch (err: unknown) {
+      setNullError(axios.isAxiosError(err) ? (err.response?.data?.detail ?? "Apply failed.") : "Apply failed.")
+    } finally {
+      setNullApplying(false)
+    }
+  }
+
+  const handleSkipNulls = () => goTo("split", "skipped")
+
+  // ── Split coordinates state ──
   const coordCols = detectCoordColumns(columns, preview)
-
-  // string cols excludes the groupBy col — computed after groupBy state is defined
-  const [groupBy, setGroupBy] = useState(columns[0]?.name ?? "")
-  const stringCols = columns.filter(c => !isNumeric(c) && c.name !== groupBy)
-
-  // group & aggregate
-  const [aggOpen, setAggOpen] = useState(false)
-  const [aggPerCol, setAggPerCol] = useState<Record<string, string>>(
-    Object.fromEntries(numericCols.map(c => [c.name, "mean"]))
-  )
-  const [strAggPerCol, setStrAggPerCol] = useState<Record<string, string>>(
-    Object.fromEntries(stringCols.map(c => [c.name, "first"]))
-  )
-  const [aggLoading, setAggLoading] = useState(false)
-  const [aggError, setAggError] = useState<string | null>(null)
-  const [aggApplied, setAggApplied] = useState(false)
-
-  // split coordinates
-  const [splitOpen, setSplitOpen] = useState(false)
   const [selectedCols, setSelectedCols] = useState<string[]>(coordCols)
   const [splitLoading, setSplitLoading] = useState(false)
   const [splitError, setSplitError] = useState<string | null>(null)
-  const [splitApplied, setSplitApplied] = useState(false)
 
-  // keep selectedCols in sync if columns prop changes
   useEffect(() => {
-  const detected = detectCoordColumns(columns, preview)
-  setSelectedCols(detected)
-  setSplitApplied(false)
-}, [columns, preview])
-
-  // when groupBy changes, remove it from strAggPerCol if present
-  useEffect(() => {
-  setAggPerCol(Object.fromEntries(numericCols.map(c => [c.name, "mean"])))
-  setStrAggPerCol(Object.fromEntries(
-    columns.filter(c => !isNumeric(c) && c.name !== groupBy).map(c => [c.name, "first"])
-  ))
-}, [groupBy, columns])
-
-  const setAll = (agg: string) => {
-    setAggPerCol(Object.fromEntries(numericCols.map(c => [c.name, agg])))
-    setAggApplied(false)
-  }
-
-  const setOne = (col: string, agg: string) => {
-    setAggPerCol(prev => ({ ...prev, [col]: agg }))
-    setAggApplied(false)
-  }
-
-  const setOneStr = (col: string, agg: string) => {
-    setStrAggPerCol(prev => ({ ...prev, [col]: agg }))
-    setAggApplied(false)
-  }
-
-  const handleAggregate = async () => {
-  setAggLoading(true)
-  setAggError(null)
-  try {
-    const payload = {
-      file_id: fileId,
-      group_by: groupBy,
-      aggregations: { ...aggPerCol, ...strAggPerCol },
-    }
-    console.log("AGG PAYLOAD:", JSON.stringify(payload))
-    const res = await axios.post("http://localhost:8000/transforms/aggregate_multi", {
-      file_id: fileId,
-      group_by: groupBy,
-      aggregations: { ...aggPerCol, ...strAggPerCol },
-    })
-    const newPreview = res.data.data
-    const newColumns = Object.keys(newPreview[0]).map(name => ({
-      name,
-      type: numericCols.find(c => c.name === name) ? "float64" : "object"
-    }))
-    onTransform({ file_id: fileId, columns: newColumns, preview: newPreview, rows: newPreview.length })
-    setAggApplied(true)
-  } catch (err: unknown) {         // ← change catch {} to this
-    if (axios.isAxiosError(err)) {
-      console.log("STATUS:", err.response?.status)
-      console.log("DETAIL:", JSON.stringify(err.response?.data))
-    }
-    setAggError("Aggregation failed — check the backend.")
-  } finally {
-    setAggLoading(false)
-  }
-}
-  const handleAggReset = () => {
-    setAggApplied(false)
-    setAggPerCol(Object.fromEntries(numericCols.map(c => [c.name, "mean"])))
-    setStrAggPerCol(Object.fromEntries(stringCols.map(c => [c.name, "first"])))
-  }
+    setSelectedCols(detectCoordColumns(columns, preview))
+  }, [columns, preview])
 
   const handleSplit = async () => {
     setSplitLoading(true)
     setSplitError(null)
     try {
-    const payload = {
-        file_id: fileId,
-        columns: selectedCols,
-    }
-    console.log("SPLIT PAYLOAD:", JSON.stringify(payload))
       const res = await axios.post("http://localhost:8000/transforms/split_coordinates", {
         file_id: fileId,
         columns: selectedCols,
@@ -144,222 +328,272 @@ export default function DataTransforms({ fileId, columns, preview, onTransform }
         preview: res.data.preview,
         rows: res.data.rows,
       })
-      setSplitApplied(true)
+      const summary = selectedCols.length
+        ? selectedCols.map(c => `${c} → x y z`).join(", ")
+        : "No columns split"
+      goTo("aggregate", "done", summary)
     } catch (err: unknown) {
-        if (axios.isAxiosError(err)) {
-            console.log("SPLIT STATUS:", err.response?.status)
-            console.log("SPLIT DETAIL:", JSON.stringify(err.response?.data))
-        } else {
-            console.log("SPLIT ERROR:", err)
-        }
-        setSplitError("Split failed — check the backend.")
+      setSplitError(axios.isAxiosError(err) ? (err.response?.data?.detail ?? "Split failed.") : "Split failed.")
     } finally {
       setSplitLoading(false)
     }
   }
 
+  const handleSkipSplit = () => goTo("aggregate", "skipped")
+
+  // ── Group & aggregate state ──
+  const numericCols = columns.filter(isNumeric)
+  const [groupBy, setGroupBy] = useState(columns[0]?.name ?? "")
+  const stringCols = columns.filter(c => !isNumeric(c) && c.name !== groupBy)
+
+  const [aggPerCol, setAggPerCol] = useState<Record<string, string>>(
+    Object.fromEntries(numericCols.map(c => [c.name, "mean"]))
+  )
+  const [strAggPerCol, setStrAggPerCol] = useState<Record<string, string>>(
+    Object.fromEntries(stringCols.map(c => [c.name, "first"]))
+  )
+  const [aggLoading, setAggLoading] = useState(false)
+  const [aggError, setAggError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setAggPerCol(Object.fromEntries(columns.filter(isNumeric).map(c => [c.name, "mean"])))
+    setStrAggPerCol(Object.fromEntries(
+      columns.filter(c => !isNumeric(c) && c.name !== groupBy).map(c => [c.name, "first"])
+    ))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupBy, columns])
+
+  const handleAggregate = async () => {
+    setAggLoading(true)
+    setAggError(null)
+    try {
+      const res = await axios.post("http://localhost:8000/transforms/aggregate_multi", {
+        file_id: fileId,
+        group_by: groupBy,
+        aggregations: { ...aggPerCol, ...strAggPerCol },
+      })
+      const newPreview = res.data.data
+      const newColumns = Object.keys(newPreview[0]).map(name => {
+        const sample = newPreview.map((r: Record<string, unknown>) => r[name]).find((v: unknown) => v != null)
+        return { name, type: typeof sample === "number" ? "float64" : "object" }
+      })
+      onTransform({ file_id: fileId, columns: newColumns, preview: newPreview, rows: newPreview.length })
+      goTo("preview", "done", `Grouped by ${groupBy}`)
+    } catch (err: unknown) {
+      setAggError(axios.isAxiosError(err) ? "Aggregation failed." : "Aggregation failed.")
+    } finally {
+      setAggLoading(false)
+    }
+  }
+
+  const handleSkipAggregate = () => goTo("preview", "skipped")
+
+  // ── Reset (back to the very original upload) ──
+  const handleReset = () => {
+    onTransform(originalRef.current)
+    setStepStatus({ nulls: "active", split: "upcoming", aggregate: "upcoming", preview: "upcoming" })
+    setSummaries({ nulls: null, split: null, aggregate: null, preview: null })
+    setCurrentStep("nulls")
+    setNullError(null)
+    setSplitError(null)
+    setAggError(null)
+  }
+
+  const stepMap: Record<StepId, StepMeta> = Object.fromEntries(STEP_ORDER.map(s => [s.id, s])) as Record<StepId, StepMeta>
+
   return (
-    <div className="mt-8">
-      <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">
-        Data transforms
-      </h3>
+    <div
+      className="rounded-2xl p-5"
+      style={{ background: "#F7F4F3" }}
+    >
+      <div className="flex items-center gap-2 mb-5">
+        <span style={{ color: "#9DB6C9" }} className="text-sm">←</span>
+        <p className="text-sm font-medium" style={{ color: "#9DB6C9" }}>back</p>
+        <p className="ml-auto text-base font-semibold" style={{ color: "#324E66" }}>Before we go on...</p>
+      </div>
 
-      <div className="space-y-3">
-
-        {/* ── Group & aggregate ── */}
-        <div className="border border-gray-200 rounded-xl overflow-hidden">
-          <button
-            onClick={() => setAggOpen(o => !o)}
-            className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              Group & aggregate
-              {aggApplied && (
-                <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">applied</span>
-              )}
-            </span>
-            <span className="text-gray-400">{aggOpen ? "▲" : "▼"}</span>
-          </button>
-
-          {aggOpen && (
-            <div className="px-4 pb-4 border-t border-gray-100">
-              <div className="mt-4 mb-4">
-                <label className="block text-xs text-gray-500 mb-1">Group by</label>
-                <div className="flex items-center gap-3">
-                  <select
-                    value={groupBy}
-                    onChange={e => { setGroupBy(e.target.value); setAggApplied(false) }}
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-                  >
-                    {columns.map(col => (
-                      <option key={col.name} value={col.name}>{col.name}</option>
-                    ))}
-                  </select>
-                  <span className="text-xs text-gray-400">→ one row per unique value</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-gray-50 rounded-lg flex-wrap">
-                <span className="text-xs text-gray-500 mr-1">Apply to all numeric:</span>
-                {AGGS.map(agg => (
-                  <button
-                    key={agg}
-                    onClick={() => setAll(agg)}
-                    className="text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-gray-400 transition-colors"
-                  >
-                    {agg}
-                  </button>
-                ))}
-              </div>
-
-              <table className="w-full text-sm mb-4">
-                <thead>
-                  <tr>
-                    <th className="text-left text-xs font-medium text-gray-400 pb-2 pl-1 w-36">Column</th>
-                    <th className="text-left text-xs font-medium text-gray-400 pb-2">Aggregation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {numericCols.map(col => (
-                    <tr key={col.name} className="border-t border-gray-100">
-                      <td className="py-2 pl-1">
-                        <span className="text-xs font-medium text-gray-700">{col.name}</span>
-                        <span className="ml-2 text-xs text-gray-400 font-mono">{col.type}</span>
-                      </td>
-                      <td className="py-2">
-                        <div className="flex gap-1.5 flex-wrap">
-                          {AGGS.map(agg => (
-                            <button
-                              key={agg}
-                              onClick={() => setOne(col.name, agg)}
-                              className={`text-xs px-3 py-1 rounded-full border transition-colors
-                                ${aggPerCol[col.name] === agg
-                                  ? "bg-indigo-500 text-white border-indigo-500"
-                                  : "border-gray-200 text-gray-500 hover:border-gray-400"
-                                }`}
-                            >
-                              {agg}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {stringCols.map(col => (
-                    <tr key={col.name} className="border-t border-gray-100">
-                      <td className="py-2 pl-1">
-                        <span className="text-xs font-medium text-gray-700">{col.name}</span>
-                        <span className="ml-2 text-xs text-gray-400 font-mono">string</span>
-                      </td>
-                      <td className="py-2">
-                        <div className="flex gap-1.5 flex-wrap">
-                          {STRING_AGGS.map(agg => (
-                            <button
-                              key={agg}
-                              onClick={() => setOneStr(col.name, agg)}
-                              className={`text-xs px-3 py-1 rounded-full border transition-colors
-                                ${strAggPerCol[col.name] === agg
-                                  ? "bg-violet-500 text-white border-violet-500"
-                                  : "border-gray-200 text-gray-500 hover:border-gray-400"
-                                }`}
-                            >
-                              {agg}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleAggregate}
-                  disabled={aggLoading}
-                  className="px-4 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40 transition-colors"
-                >
-                  {aggLoading ? "Running..." : aggApplied ? "Re-run" : "Preview"}
-                </button>
-                {aggApplied && (
-                  <button
-                    onClick={handleAggReset}
-                    className="px-4 py-1.5 text-sm border border-gray-200 text-gray-500 rounded-lg hover:border-gray-400 transition-colors"
-                  >
-                    Reset
-                  </button>
-                )}
-                {aggError && <p className="text-red-400 text-xs">{aggError}</p>}
-                {aggApplied && !aggError && (
-                  <p className="text-xs text-indigo-500">✓ Preview updated above</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ── Split coordinates ── */}
-        {coordCols.length > 0 && (
-          <div className="border border-gray-200 rounded-xl overflow-hidden">
-            <button
-              onClick={() => setSplitOpen(o => !o)}
-              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              <span className="flex items-center gap-2">
-                Split coordinates
-                {splitApplied && (
-                  <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">applied</span>
-                )}
-              </span>
-              <span className="text-gray-400">{splitOpen ? "▲" : "▼"}</span>
-            </button>
-
-            {splitOpen && (
-              <div className="px-4 pb-4 border-t border-gray-100">
-                <p className="text-xs text-gray-400 mt-3 mb-4">
-                  Detected columns with coordinate values like (x, y, z).
-                </p>
-                <div className="mb-4">
-                  <label className="block text-xs text-gray-500 mb-2">Coordinate columns</label>
-                  <div className="space-y-2">
-                    {coordCols.map(col => (
-                      <label key={col} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={selectedCols.includes(col)}
-                          onChange={e => {
-                            if (e.target.checked) {
-                              setSelectedCols(prev => [...prev, col])
-                            } else {
-                              setSelectedCols(prev => prev.filter(c => c !== col))
-                            }
-                            setSplitApplied(false)
-                          }}
-                        />
-                        {col}
-                      </label>
-                    ))}
+      {/* Step 1: nulls */}
+      <Step
+        meta={stepMap.nulls}
+        status={stepStatus.nulls}
+        summary={summaries.nulls}
+      >
+        {nullsLoading ? (
+          <p className="text-xs" style={{ color: "#9DB6C9" }}>Checking for missing values…</p>
+        ) : nulls.length === 0 ? (
+          <p className="text-xs" style={{ color: "#9DB6C9" }}>No missing values found.</p>
+        ) : (
+          <>
+            {nulls.map(n => {
+              const spec = specs[n.column] ?? { strategy: "ignore" }
+              const pct = ((n.null_count / n.total) * 100).toFixed(1)
+              return (
+                <div key={n.column} className="flex flex-col gap-1.5 pb-2 border-b last:border-0 last:pb-0" style={{ borderColor: "#E8EFF4" }}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium" style={{ color: "#324E66" }}>{n.column}</span>
+                    <span className="text-xs font-mono" style={{ color: "#9DB6C9" }}>{n.is_numeric ? "numeric" : "string"}</span>
+                    <span className="text-xs ml-auto" style={{ color: "#5F7B94" }}>
+                      {n.null_count} <span style={{ color: "#9DB6C9" }}>({pct}%)</span>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {NULL_STRATEGIES.map(s => {
+                      if ((s === "mean" || s === "median" || s === "interpolate") && !n.is_numeric) return null
+                      return <Pill key={s} label={s} active={spec.strategy === s} onClick={() => setOne(n.column, s)} />
+                    })}
+                    {spec.strategy === "fill" && (
+                      <input
+                        type="text"
+                        placeholder="value"
+                        value={spec.value ?? ""}
+                        onChange={e => setValue(n.column, e.target.value)}
+                        className="text-xs rounded-lg px-2 py-0.5 w-20 border"
+                        style={{ borderColor: "#E8EFF4" }}
+                      />
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleSplit}
-                    disabled={splitLoading}
-                    className="px-4 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-700 disabled:opacity-40 transition-colors"
-                  >
-                    {splitLoading ? "Splitting..." : splitApplied ? "Re-split" : "Split"}
-                  </button>
-                  {splitError && <p className="text-red-400 text-xs">{splitError}</p>}
-                  {splitApplied && !splitError && (
-                    <p className="text-xs text-indigo-500">✓ Preview updated above</p>
-                  )}
+              )
+            })}
+            <ActionRow onApply={handleApplyNulls} onSkip={handleSkipNulls} loading={nullApplying} error={nullError} applyLabel="Apply" />
+          </>
+        )}
+      </Step>
+
+      {/* Step 2: split coordinates */}
+      <Step meta={stepMap.split} status={stepStatus.split} summary={summaries.split}>
+        {coordCols.length === 0 ? (
+          <p className="text-xs" style={{ color: "#9DB6C9" }}>No coordinate-like columns detected.</p>
+        ) : (
+          <>
+            <div className="flex flex-col gap-2">
+              {coordCols.map(col => (
+                <div key={col} className="flex items-center justify-between">
+                  <span className="text-xs" style={{ color: "#324E66" }}>
+                    {col} <span className="font-mono" style={{ color: "#9DB6C9" }}>object</span>
+                  </span>
+                  <Pill
+                    label="split → x y z"
+                    active={selectedCols.includes(col)}
+                    onClick={() =>
+                      setSelectedCols(prev =>
+                        prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
+                      )
+                    }
+                  />
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
+            <ActionRow onApply={handleSplit} onSkip={handleSkipSplit} loading={splitLoading} error={splitError} applyLabel="Split" />
+          </>
+        )}
+      </Step>
+
+      {/* Step 3: group & aggregate */}
+      <Step meta={stepMap.aggregate} status={stepStatus.aggregate} summary={summaries.aggregate}>
+        <div className="flex items-center gap-2">
+          <span className="text-xs shrink-0" style={{ color: "#5F7B94" }}>Group by</span>
+          <select
+            value={groupBy}
+            onChange={e => setGroupBy(e.target.value)}
+            className="text-xs rounded-lg px-2 py-1 flex-1 min-w-0 border"
+            style={{ borderColor: "#E8EFF4", color: "#324E66" }}
+          >
+            {columns.map(col => (
+              <option key={col.name} value={col.name}>{col.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {numericCols.length > 0 && (
+          <div className="flex flex-col gap-2 pt-1 border-t" style={{ borderColor: "#E8EFF4" }}>
+            {numericCols.map(col => (
+              <ColRow key={col.name} name={col.name} type={col.type}>
+                {AGGS.map(agg => (
+                  <Pill
+                    key={agg} label={agg}
+                    active={aggPerCol[col.name] === agg}
+                    onClick={() => setAggPerCol(prev => ({ ...prev, [col.name]: agg }))}
+                  />
+                ))}
+              </ColRow>
+            ))}
           </div>
         )}
 
-      </div>
+        {stringCols.length > 0 && (
+          <div className="flex flex-col gap-2 pt-1 border-t" style={{ borderColor: "#E8EFF4" }}>
+            {stringCols.map(col => (
+              <ColRow key={col.name} name={col.name} type="string">
+                {STRING_AGGS.map(agg => (
+                  <Pill
+                    key={agg} label={agg}
+                    active={strAggPerCol[col.name] === agg}
+                    activeStyle={{ background: "#324E66", borderColor: "#324E66" }}
+                    onClick={() => setStrAggPerCol(prev => ({ ...prev, [col.name]: agg }))}
+                  />
+                ))}
+              </ColRow>
+            ))}
+          </div>
+        )}
+
+        <ActionRow onApply={handleAggregate} onSkip={handleSkipAggregate} loading={aggLoading} error={aggError} applyLabel="Preview" />
+      </Step>
+
+      {/* Step 4: preview & continue */}
+      <Step meta={stepMap.preview} status={stepStatus.preview}>
+        {stepStatus.preview === "active" && (
+          <>
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#E8EFF4" }}>
+              <div className="px-3 py-2 text-xs" style={{ background: "#E8EFF4", color: "#324E66" }}>
+                {preview.length} rows shown · {columns.length} columns
+              </div>
+              <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                <table className="min-w-full text-xs">
+                  <thead style={{ background: "#F7F4F3" }}>
+                    <tr>
+                      {columns.map(col => (
+                        <th key={col.name} className="px-3 py-1.5 text-left font-medium whitespace-nowrap" style={{ color: "#5F7B94" }}>
+                          {col.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.slice(0, 8).map((row, i) => (
+                      <tr key={i}>
+                        {columns.map(col => (
+                          <td key={col.name} className="px-3 py-1.5 whitespace-nowrap" style={{ color: "#324E66" }}>
+                            {String(row[col.name] ?? "")}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                onClick={handleReset}
+                className="px-4 py-1.5 text-xs font-medium rounded-lg border transition-colors"
+                style={{ borderColor: "#9DB6C9", color: "#5F7B94", background: "transparent" }}
+              >
+                Start over
+              </button>
+              <button
+                onClick={onContinue}
+                className="px-4 py-1.5 text-xs font-medium rounded-lg transition-colors"
+                style={{ background: "#324E66", color: "#F7F4F3" }}
+              >
+                Continue to Analysis →
+              </button>
+            </div>
+          </>
+        )}
+      </Step>
     </div>
   )
 }

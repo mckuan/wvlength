@@ -12,7 +12,7 @@ interface Props {
 
 export default function DataPreview({ filename, rows, columns, preview }: Props) {
   return (
-    <div className="mt-8">
+    <div>
       {/* Summary */}
       <div className="mb-4">
         <h2 className="text-lg font-semibold">{filename}</h2>
@@ -28,13 +28,13 @@ export default function DataPreview({ filename, rows, columns, preview }: Props)
         ))}
       </div>
 
-      {/* Preview table */}
-      <div className="overflow-x-auto overflow-y-auto rounded-lg border border-gray-200" style={{ maxHeight: '400px' }}>
+      {/* Preview table — fills remaining height */}
+      <div className="overflow-x-auto overflow-y-auto rounded-lg border border-gray-200">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 sticky top-0">
             <tr>
               {columns.map((col) => (
-                <th key={col.name} className="px-4 py-2 text-left font-medium text-gray-600">
+                <th key={col.name} className="px-4 py-2 text-left font-medium text-324E66 whitespace-nowrap">
                   {col.name}
                 </th>
               ))}
@@ -42,9 +42,9 @@ export default function DataPreview({ filename, rows, columns, preview }: Props)
           </thead>
           <tbody>
             {preview.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+              <tr key={i} className={i % 2 === 0 ? "#F7F4F3" : "#E8EFF4"}>
                 {columns.map((col) => (
-                  <td key={col.name} className="px-4 py-2 text-gray-700">
+                  <td key={col.name} className="px-4 py-2 text-gray-700 whitespace-nowrap">
                     {String(row[col.name])}
                   </td>
                 ))}

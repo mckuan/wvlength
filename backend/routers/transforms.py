@@ -5,33 +5,53 @@ import numpy as np
 import pandas as pd
 import os
 import json
-
-from routers.uploads import load_df
-
+ 
+from routers.uploads import load_df, save_df, load_meta, reset_to_original, _ensure_working_copy
+ 
 router = APIRouter(prefix="/transforms", tags=["transforms"])
-
-
+ 
+ 
+class ResetRequest(BaseModel):
+    file_id: str
+ 
+@router.post("/reset")
+def reset_file(req: ResetRequest):
+    df = reset_to_original(req.file_id)
+    meta = load_meta(req.file_id)
+    columns = [{"name": c, "type": str(df[c].dtype)} for c in df.columns]
+    preview = df.fillna("").to_dict(orient="records")
+    return {
+        "file_id":  req.file_id,
+        "filename": meta["filename"],
+        "rows":     len(df),
+        "columns":  columns,
+        "preview":  preview,
+    }
+ 
+ 
 def _majority(x):
     m = x.mode()
     if m.empty:
         raise ValueError("No majority value found")
     return m.iloc[0]
-
-
+ 
+ 
 STRING_AGGS = {
     "first":    "first",
     "last":     "last",
     "majority": _majority,
 }
-
+ 
+ 
 class NullInfoRequest(BaseModel):
-    file_id:      Optional[str]   = None
+    file_id: Optional[str]        = None
     data:    Optional[list[dict]] = None
-
-
+ 
+ 
 @router.post("/null_info")
 def null_info(req: NullInfoRequest):
     if req.file_id:
+        _ensure_working_copy(req.file_id)
         df = load_df(req.file_id)
     elif req.data is not None:
         df = pd.DataFrame(req.data)
@@ -60,18 +80,19 @@ def null_info(req: NullInfoRequest):
  
  
 class FillSpec(BaseModel):
-    strategy: str          # "drop", "mean", "median", "mode", "fill", "ignore"
-    value:    Optional[str] = None   # used when strategy == "fill"
+    strategy: str
+    value:    Optional[str] = None
  
 class NullCleanRequest(BaseModel):
     file_id:  Optional[str]        = None
     data:     Optional[list[dict]] = None
-    columns:  dict[str, FillSpec]  # col -> spec
+    columns:  dict[str, FillSpec]
  
  
 @router.post("/clean_nulls")
 def clean_nulls(req: NullCleanRequest):
     if req.file_id:
+        _ensure_working_copy(req.file_id)
         df = load_df(req.file_id)
     elif req.data is not None:
         df = pd.DataFrame(req.data)
@@ -125,7 +146,6 @@ def clean_nulls(req: NullCleanRequest):
     df = df[~drop_rows_mask].reset_index(drop=True)
  
     if req.file_id:
-        from routers.uploads import save_df, load_meta
         meta = load_meta(req.file_id)
         save_df(req.file_id, df, meta["filename"])
  
@@ -138,36 +158,37 @@ def clean_nulls(req: NullCleanRequest):
         "columns":  columns,
         "preview":  preview,
     }
-
-
+ 
+ 
 class AggregateMultiRequest(BaseModel):
     file_id:      Optional[str]        = None
     data:         Optional[list[dict]] = None
     group_by:     str
     aggregations: dict[str, str]
-
-
+ 
+ 
 @router.post("/aggregate_multi")
 def aggregate_multi(req: AggregateMultiRequest):
     if req.file_id:
+        _ensure_working_copy(req.file_id)
         df = load_df(req.file_id)
     elif req.data is not None:
         df = pd.DataFrame(req.data)
     else:
         raise HTTPException(status_code=400, detail="Provide either 'file_id' or 'data'")
-
+ 
     for col in df.columns:
         try:
             df[col] = pd.to_numeric(df[col])
         except (ValueError, TypeError):
             pass
-
+ 
     if req.group_by not in df.columns:
         raise HTTPException(status_code=400, detail=f"Column '{req.group_by}' not found")
-
+ 
     agg_map = {"mean": "mean", "sum": "sum", "count": "count",
                "median": "median", "min": "min", "max": "max"}
-    
+ 
     agg_spec = {}
     for col, agg in req.aggregations.items():
         if col == req.group_by:
@@ -182,45 +203,44 @@ def aggregate_multi(req: AggregateMultiRequest):
             agg_spec[col] = agg_map[agg]
         else:
             raise HTTPException(status_code=400, detail=f"Unknown aggregation '{agg}'")
-
+ 
     df["_group"] = df[req.group_by]
     result = df.groupby("_group", dropna=True).agg(agg_spec).reset_index()
     result = result.rename(columns={"_group": req.group_by})
-
+ 
     numeric_cols = result.select_dtypes(include="number").columns
     for col in numeric_cols:
         result[col] = result[col].round(2)
-
+ 
     if req.file_id:
-        from routers.uploads import save_df, load_meta
         meta = load_meta(req.file_id)
         save_df(req.file_id, result, meta["filename"])
-
+ 
     return {
         "data":         result.to_dict(orient="records"),
         "group_by":     req.group_by,
         "aggregations": req.aggregations,
     }
-
-
+ 
+ 
 class SplitCoordinatesRequest(BaseModel):
     file_id: str
     columns: list[str]
-
-
+ 
+ 
 @router.post("/split_coordinates")
 def split_coordinates(req: SplitCoordinatesRequest):
+    _ensure_working_copy(req.file_id)
     df = load_df(req.file_id)
-
+ 
     print("ACTUAL COLUMNS:", df.columns.tolist())
     print("REQUESTED:", req.columns)
-
+ 
     existing = [col for col in req.columns if col in df.columns]
     missing  = [col for col in req.columns if col not in df.columns]
     if missing:
         print(f"Skipping already-split columns: {missing}")
-
-
+ 
     def parse_coord(val):
         try:
             cleaned = str(val).strip().strip("()[] ")
@@ -228,29 +248,26 @@ def split_coordinates(req: SplitCoordinatesRequest):
             return parts
         except Exception:
             return []
-
+ 
     for col in existing:
         parsed = df[col].apply(parse_coord)
         max_dims = parsed.apply(len).max()
         axis_names = ["x", "y", "z", "w", "v", "u"]
-
+ 
         for i in range(max_dims):
             axis = axis_names[i] if i < len(axis_names) else f"dim{i+1}"
             new_col = f"{col}_{axis}"
             result = parsed.apply(lambda p, i=i: p[i] if i < len(p) else None)
             df[new_col] = pd.to_numeric(result, errors="coerce")
-
+ 
         df = df.drop(columns=[col])
-
-    from routers.uploads import save_df, load_meta
-
+ 
     meta = load_meta(req.file_id)
     save_df(req.file_id, df, meta["filename"])
-
+ 
     columns = [{"name": c, "type": str(df[c].dtype)} for c in df.columns]
     preview = df.fillna("").to_dict(orient="records")
-
-
+ 
     return {
         "file_id":  req.file_id,
         "filename": meta["filename"],
@@ -258,42 +275,5 @@ def split_coordinates(req: SplitCoordinatesRequest):
         "columns":  columns,
         "preview":  preview,
     }
-
-
-class SummaryRequest(BaseModel):
-    file_id:  Optional[str]        = None
-    data:     Optional[list[dict]] = None
-    columns:  list[str]
-
-
-@router.post("/summary")
-def get_summary(req: SummaryRequest):
-    if req.file_id:
-        df = load_df(req.file_id)
-    elif req.data is not None:
-        df = pd.DataFrame(req.data)
-    else:
-        raise HTTPException(status_code=400, detail="Provide either 'file_id' or 'data'")
-
-    for col in df.columns:
-        try:
-            df[col] = pd.to_numeric(df[col])
-        except (ValueError, TypeError):
-            pass
-
-    result = {}
-    for col in req.columns:
-        if col not in df.columns:
-            continue
-        if not pd.api.types.is_numeric_dtype(df[col]):
-            continue
-        result[col] = {
-            "min":    round(float(df[col].min()),    2),
-            "max":    round(float(df[col].max()),    2),
-            "mean":   round(float(df[col].mean()),   2),
-            "median": round(float(df[col].median()), 2),
-            "sd":     round(float(df[col].std()),    2),
-            "count":  int(df[col].count()),
-        }
-
-    return {"summary": result}
+ 
+ 

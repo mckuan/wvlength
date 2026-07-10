@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react"
+
+import { useState, useEffect } from "react"
 import axios from "axios"
 
 interface Column {
@@ -6,30 +7,27 @@ interface Column {
   type: string
 }
 
-interface Dataset {
-  file_id: string
-  columns: Column[]
-  preview: Record<string, unknown>[]
-  rows: number
-}
-
 interface Props {
   fileId: string
   columns: Column[]
   preview: Record<string, unknown>[]
   onTransform: (dataset: object) => void
-  onContinue?: () => void
+  onContinue: () => void
+  onReset: () => void
 }
 
 const AGGS = ["mean", "sum", "median", "min", "max", "count"]
 const STRING_AGGS = ["first", "last", "majority"]
+const NULL_STRATEGIES = ["ignore", "drop", "ffill", "bfill", "mode", "mean", "median", "interpolate", "fill"] as const
+type NullStrategy = typeof NULL_STRATEGIES[number]
 
-// ── Palette (Business Blue) ───────────────────────────────────────────────────
-// bg cream:  #F7F4F3
-// panel:     #E8EFF4
-// accent lt: #9DB6C9
-// accent:    #5F7B94
-// ink/dark:  #324E66
+const BLUE = {
+  lightest: "#F7F4F3",
+  light:    "#E8EFF4",
+  mid:      "#9DB6C9",
+  dark:     "#5F7B94",
+  darkest:  "#324E66",
+}
 
 function isNumeric(col: Column) {
   return col.type.includes("int") || col.type.includes("float")
@@ -45,159 +43,110 @@ function detectCoordColumns(columns: Column[], preview: Record<string, unknown>[
     .map(col => col.name)
 }
 
-type StepId = "nulls" | "split" | "aggregate" | "preview"
+// ── Shared pill ───────────────────────────────────────────────────────────────
 
-interface StepMeta {
-  id: StepId
-  index: number
-  label: string
-}
-
-const STEP_ORDER: StepMeta[] = [
-  { id: "nulls", index: 1, label: "Clean nulls" },
-  { id: "split", index: 2, label: "Split coordinates" },
-  { id: "aggregate", index: 3, label: "Group & aggregate" },
-  { id: "preview", index: 4, label: "Preview & continue" },
-]
-
-// ── Step shell ────────────────────────────────────────────────────────────────
-
-function Step({
-  meta,
-  status,
-  summary,
-  children,
-}: {
-  meta: StepMeta
-  status: "done" | "active" | "upcoming" | "skipped"
-  summary?: React.ReactNode
-  children?: React.ReactNode
-}) {
-  const isActive = status === "active"
-  const isDone = status === "done"
-  const isSkipped = status === "skipped"
-
-  return (
-    <div>
-      <div className="flex items-center gap-3">
-        <div
-          className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-colors"
-          style={{
-            background: isDone ? "#5F7B94" : isActive ? "#324E66" : "transparent",
-            color: isDone || isActive ? "#F7F4F3" : "#9DB6C9",
-            border: isDone || isActive ? "none" : "1.5px solid #9DB6C9",
-          }}
-        >
-          {isDone ? "✓" : meta.index}
-        </div>
-        <span
-          className="font-semibold text-[15px]"
-          style={{ color: isActive ? "#324E66" : isDone ? "#324E66" : "#9DB6C9" }}
-        >
-          {meta.label}
-        </span>
-        {isDone && !isSkipped && (
-          <span
-            className="text-xs px-2 py-0.5 rounded-full font-medium ml-1"
-            style={{ background: "#E8EFF4", color: "#5F7B94" }}
-          >
-            applied
-          </span>
-        )}
-        {isSkipped && (
-          <span
-            className="text-xs px-2 py-0.5 rounded-full font-medium ml-1"
-            style={{ background: "#F7F4F3", color: "#9DB6C9" }}
-          >
-            skipped
-          </span>
-        )}
-      </div>
-
-      {isDone && summary && (
-        <div className="ml-9 mt-1.5 text-xs" style={{ color: "#5F7B94" }}>
-          {summary}
-        </div>
-      )}
-
-      {isActive && children && (
-        <div className="ml-9 mt-3 flex flex-col gap-3">{children}</div>
-      )}
-
-      {meta.index < 4 && (
-        <div className="ml-3 my-3 h-6 w-px" style={{ background: "#E8EFF4" }} />
-      )}
-    </div>
-  )
-}
-
-// ── Pill button ───────────────────────────────────────────────────────────────
-
-function Pill({ label, active, activeStyle, onClick }: {
-  label: string
-  active: boolean
-  activeStyle?: React.CSSProperties
-  onClick: () => void
-}) {
+function Pill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="text-xs px-2.5 py-1 rounded-full border transition-colors"
-      style={
-        active
-          ? { background: "#5F7B94", color: "#F7F4F3", borderColor: "#5F7B94", ...activeStyle }
-          : { borderColor: "#E8EFF4", color: "#5F7B94", background: "transparent" }
-      }
+      style={{
+        fontSize: 11,
+        padding: "2px 10px",
+        borderRadius: 99,
+        border: active ? `1.5px solid ${BLUE.darkest}` : `0.5px solid #c5d5e0`,
+        background: active ? BLUE.darkest : "transparent",
+        color: active ? "#fff" : BLUE.dark,
+        cursor: "pointer",
+        transition: "all 0.15s",
+        whiteSpace: "nowrap" as const,
+      }}
     >
       {label}
     </button>
   )
 }
 
-// ── Action row ────────────────────────────────────────────────────────────────
+// ── Step shell ────────────────────────────────────────────────────────────────
 
-function ActionRow({ onApply, onSkip, loading, error, applyLabel }: {
-  onApply: () => void
-  onSkip: () => void
-  loading: boolean
-  error: string | null
-  applyLabel: string
+function StepShell({
+  num, title, state, badge, children, onSkip,
+}: {
+  num: number
+  title: string
+  state: "done" | "active" | "pending"
+  badge?: React.ReactNode
+  children?: React.ReactNode
+  onSkip?: () => void
 }) {
+  const numStyle: React.CSSProperties = {
+    width: 22, height: 22, borderRadius: "50%",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: 10, fontWeight: 500, flexShrink: 0,
+    background: state === "active" ? BLUE.darkest : state === "done" ? BLUE.light : "#f0f0f0",
+    color: state === "active" ? "#fff" : state === "done" ? BLUE.darkest : "#aaa",
+    border: state === "pending" ? "0.5px solid #ddd" : "none",
+  }
   return (
-    <div className="flex items-center gap-3 pt-1">
-      <button
-        onClick={onApply}
-        disabled={loading}
-        className="px-4 py-1.5 text-xs font-medium rounded-lg disabled:opacity-40 transition-colors"
-        style={{ background: "#324E66", color: "#F7F4F3" }}
-      >
-        {loading ? "Running..." : applyLabel}
-      </button>
-      <button
-        onClick={onSkip}
-        className="text-xs underline underline-offset-2"
-        style={{ color: "#9DB6C9" }}
-      >
-        skip
-      </button>
-      {error && <p className="text-xs" style={{ color: "#b45f5f" }}>{error}</p>}
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={numStyle}>{state === "done" ? "✓" : num}</div>
+        <span style={{
+          fontSize: 12, fontWeight: 500,
+          color: state === "pending" ? "#aaa" : BLUE.darkest,
+        }}>{title}</span>
+        {badge && <span style={{ marginLeft: "auto" }}>{badge}</span>}
+        {state === "active" && onSkip && (
+          <button
+            onClick={onSkip}
+            style={{ marginLeft: "auto", fontSize: 10, color: BLUE.mid, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
+          >
+            skip
+          </button>
+        )}
+      </div>
+      {children && (
+        <div style={{ marginLeft: 30, display: "flex", flexDirection: "column", gap: 8 }}>
+          {children}
+        </div>
+      )}
     </div>
+  )
+}
+
+function Connector() {
+  return <div style={{ width: 1, height: 12, background: "#dce8f0", marginLeft: 10 }} />
+}
+
+function ApplyBtn({ onClick, loading, label }: { onClick: () => void; loading: boolean; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      style={{
+        fontSize: 11, padding: "5px 14px", borderRadius: 8,
+        background: BLUE.darkest, color: "#fff", border: "none",
+        cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.5 : 1,
+        alignSelf: "flex-start",
+      }}
+    >
+      {loading ? "..." : label}
+    </button>
   )
 }
 
 function ColRow({ name, type, children }: { name: string; type: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs font-medium" style={{ color: "#324E66" }}>{name}</span>
-        <span className="text-xs font-mono" style={{ color: "#9DB6C9" }}>{type}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingBottom: 8, borderBottom: "0.5px solid #dce8f0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 500, color: BLUE.darkest }}>{name}</span>
+        <span style={{ fontSize: 10, color: BLUE.mid, fontFamily: "monospace" }}>{type}</span>
       </div>
-      <div className="flex flex-wrap gap-1.5">{children}</div>
+      <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 4 }}>{children}</div>
     </div>
   )
 }
 
-// ── Null cleaner types ───────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface NullInfo {
   column: string
@@ -207,393 +156,339 @@ interface NullInfo {
 }
 
 interface FillSpec {
-  strategy: "drop" | "mean" | "median" | "mode" | "ffill" | "bfill" | "interpolate" | "fill" | "ignore"
+  strategy: NullStrategy
   value?: string
 }
 
-const NULL_STRATEGIES: FillSpec["strategy"][] = ["ignore", "drop", "ffill", "bfill", "mode", "mean", "median", "interpolate", "fill"]
-
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function DataTransforms({ fileId, columns, preview, onTransform, onContinue }: Props) {
-  // Keep the ORIGINAL dataset around so "start over" can truly reset everything.
-  const originalRef = useRef<Dataset>({ file_id: fileId, columns, preview, rows: preview.length })
+type Step = "nulls" | "split" | "aggregate" | "preview"
 
-  const [currentStep, setCurrentStep] = useState<StepId>("nulls")
-  const [stepStatus, setStepStatus] = useState<Record<StepId, "done" | "active" | "upcoming" | "skipped">>({
-    nulls: "active",
-    split: "upcoming",
-    aggregate: "upcoming",
-    preview: "upcoming",
-  })
-  const [summaries, setSummaries] = useState<Record<StepId, React.ReactNode>>({
-    nulls: null, split: null, aggregate: null, preview: null,
-  })
+export default function DataTransforms({ fileId, columns, preview, onTransform, onContinue, onReset }: Props) {
+  const numericCols = columns.filter(isNumeric)
+  const coordCols   = detectCoordColumns(columns, preview)
+  const stringCols  = columns.filter(c => !isNumeric(c))
 
-  const goTo = (step: StepId, prevStatus: "done" | "skipped", summary?: React.ReactNode) => {
-    setStepStatus(prev => ({ ...prev, [currentStep]: prevStatus }))
-    if (summary !== undefined) {
-      setSummaries(prev => ({ ...prev, [currentStep]: summary }))
-    }
-    const idx = STEP_ORDER.findIndex(s => s.id === step)
-    setStepStatus(prev => {
-      const next = { ...prev, [currentStep]: prevStatus }
-      next[step] = "active"
-      return next
-    })
-    setCurrentStep(step)
-  }
+  // step tracking
+  const [step, setStep] = useState<Step>("nulls")
 
-  // ── Null cleaner state ──
-  const [nulls, setNulls] = useState<NullInfo[]>([])
-  const [nullsLoading, setNullsLoading] = useState(true)
-  const [specs, setSpecs] = useState<Record<string, FillSpec>>({})
+  // null state
+  const [nulls, setNulls]       = useState<NullInfo[]>([])
+  const [nullSpecs, setNullSpecs] = useState<Record<string, FillSpec>>({})
+  const [nullLoading, setNullLoading] = useState(false)
   const [nullApplying, setNullApplying] = useState(false)
   const [nullError, setNullError] = useState<string | null>(null)
 
+  // split state
+  const [selectedCols, setSelectedCols] = useState<string[]>(coordCols)
+  const [splitLoading, setSplitLoading] = useState(false)
+  const [splitError, setSplitError]     = useState<string | null>(null)
+
+  // aggregate state
+  const [groupBy, setGroupBy] = useState(columns[0]?.name ?? "")
+  const [aggPerCol, setAggPerCol] = useState<Record<string, string>>(
+    Object.fromEntries(numericCols.map(c => [c.name, "mean"]))
+  )
+  const [strAggPerCol, setStrAggPerCol] = useState<Record<string, string>>(
+    Object.fromEntries(stringCols.filter(c => c.name !== groupBy).map(c => [c.name, "first"]))
+  )
+  const [aggLoading, setAggLoading] = useState(false)
+  const [aggError, setAggError]     = useState<string | null>(null)
+
+  // sync coord cols when columns change
   useEffect(() => {
-    setNullsLoading(true)
-    axios.post("http://localhost:8000/transforms/null_info", { file_id: originalRef.current.file_id })
+    setSelectedCols(detectCoordColumns(columns, preview))
+  }, [columns, preview])
+
+  // sync agg state when columns change
+  useEffect(() => {
+    setAggPerCol(Object.fromEntries(columns.filter(isNumeric).map(c => [c.name, "mean"])))
+    setStrAggPerCol(Object.fromEntries(
+      columns.filter(c => !isNumeric(c) && c.name !== groupBy).map(c => [c.name, "first"])
+    ))
+  }, [columns, groupBy])
+
+  // fetch null info on mount
+  useEffect(() => {
+    if (!fileId) return
+    setNullLoading(true)
+    axios.post("http://localhost:8000/transforms/null_info", { file_id: fileId })
       .then(res => {
         const info: NullInfo[] = res.data.nulls
         setNulls(info)
-        setSpecs(Object.fromEntries(info.map(n => [n.column, { strategy: "ignore" as const }])))
-        // Auto-skip step 1 if there are no nulls at all.
-        if (info.length === 0) {
-          setStepStatus(prev => ({ ...prev, nulls: "skipped", split: "active" }))
-          setCurrentStep("split")
-        }
+        setNullSpecs(Object.fromEntries(info.map(n => [n.column, { strategy: "ignore" as NullStrategy }])))
+        if (info.length === 0) setStep("split")
       })
       .catch(() => setNullError("Could not load null info."))
-      .finally(() => setNullsLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+      .finally(() => setNullLoading(false))
+  }, [fileId])
 
-  const setOne = (col: string, strategy: FillSpec["strategy"]) => {
-    setSpecs(prev => ({ ...prev, [col]: { ...prev[col], strategy } }))
-  }
-  const setValue = (col: string, value: string) => {
-    setSpecs(prev => ({ ...prev, [col]: { ...prev[col], value } }))
-  }
+  // ── Handlers ─────────────────────────────────────────────────────────────
 
   const handleApplyNulls = async () => {
     setNullApplying(true)
     setNullError(null)
     try {
       const res = await axios.post("http://localhost:8000/transforms/clean_nulls", {
-        file_id: originalRef.current.file_id,
-        columns: specs,
+        file_id: fileId, columns: nullSpecs,
       })
-      onTransform({
-        file_id: res.data.file_id,
-        columns: res.data.columns,
-        preview: res.data.preview,
-        rows: res.data.rows,
-      })
-      const touched = Object.entries(specs).filter(([, s]) => s.strategy !== "ignore")
-      const summary = touched.length
-        ? touched.map(([col, s]) => `${col} — ${s.strategy}${s.strategy === "fill" && s.value ? ` "${s.value}"` : ""} applied`).join(", ")
-        : "No changes made"
-      goTo("split", "done", summary)
-    } catch (err: unknown) {
-      setNullError(axios.isAxiosError(err) ? (err.response?.data?.detail ?? "Apply failed.") : "Apply failed.")
+      onTransform({ file_id: res.data.file_id, columns: res.data.columns, preview: res.data.preview, rows: res.data.rows })
+      setStep("split")
+    } catch {
+      setNullError("Failed to apply.")
     } finally {
       setNullApplying(false)
     }
   }
-
-  const handleSkipNulls = () => goTo("split", "skipped")
-
-  // ── Split coordinates state ──
-  const coordCols = detectCoordColumns(columns, preview)
-  const [selectedCols, setSelectedCols] = useState<string[]>(coordCols)
-  const [splitLoading, setSplitLoading] = useState(false)
-  const [splitError, setSplitError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setSelectedCols(detectCoordColumns(columns, preview))
-  }, [columns, preview])
 
   const handleSplit = async () => {
     setSplitLoading(true)
     setSplitError(null)
     try {
       const res = await axios.post("http://localhost:8000/transforms/split_coordinates", {
-        file_id: fileId,
-        columns: selectedCols,
+        file_id: fileId, columns: selectedCols,
       })
-      onTransform({
-        file_id: res.data.file_id,
-        columns: res.data.columns,
-        preview: res.data.preview,
-        rows: res.data.rows,
-      })
-      const summary = selectedCols.length
-        ? selectedCols.map(c => `${c} → x y z`).join(", ")
-        : "No columns split"
-      goTo("aggregate", "done", summary)
-    } catch (err: unknown) {
-      setSplitError(axios.isAxiosError(err) ? (err.response?.data?.detail ?? "Split failed.") : "Split failed.")
+      onTransform({ file_id: res.data.file_id, columns: res.data.columns, preview: res.data.preview, rows: res.data.rows })
+      setStep("aggregate")
+    } catch {
+      setSplitError("Split failed.")
     } finally {
       setSplitLoading(false)
     }
   }
 
-  const handleSkipSplit = () => goTo("aggregate", "skipped")
-
-  // ── Group & aggregate state ──
-  const numericCols = columns.filter(isNumeric)
-  const [groupBy, setGroupBy] = useState(columns[0]?.name ?? "")
-  const stringCols = columns.filter(c => !isNumeric(c) && c.name !== groupBy)
-
-  const [aggPerCol, setAggPerCol] = useState<Record<string, string>>(
-    Object.fromEntries(numericCols.map(c => [c.name, "mean"]))
-  )
-  const [strAggPerCol, setStrAggPerCol] = useState<Record<string, string>>(
-    Object.fromEntries(stringCols.map(c => [c.name, "first"]))
-  )
-  const [aggLoading, setAggLoading] = useState(false)
-  const [aggError, setAggError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setAggPerCol(Object.fromEntries(columns.filter(isNumeric).map(c => [c.name, "mean"])))
-    setStrAggPerCol(Object.fromEntries(
-      columns.filter(c => !isNumeric(c) && c.name !== groupBy).map(c => [c.name, "first"])
-    ))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupBy, columns])
-
   const handleAggregate = async () => {
     setAggLoading(true)
     setAggError(null)
     try {
+      const currentNumericCols = columns.filter(isNumeric)
+      const currentStringCols  = columns.filter(c => !isNumeric(c) && c.name !== groupBy)
       const res = await axios.post("http://localhost:8000/transforms/aggregate_multi", {
         file_id: fileId,
         group_by: groupBy,
-        aggregations: { ...aggPerCol, ...strAggPerCol },
+        aggregations: {
+          ...Object.fromEntries(currentNumericCols.map(c => [c.name, aggPerCol[c.name] ?? "mean"])),
+          ...Object.fromEntries(currentStringCols.map(c => [c.name, strAggPerCol[c.name] ?? "first"])),
+        },
       })
       const newPreview = res.data.data
-      const newColumns = Object.keys(newPreview[0]).map(name => {
+      const newColumns = Object.keys(newPreview[0]).map((name: string) => {
         const sample = newPreview.map((r: Record<string, unknown>) => r[name]).find((v: unknown) => v != null)
         return { name, type: typeof sample === "number" ? "float64" : "object" }
       })
       onTransform({ file_id: fileId, columns: newColumns, preview: newPreview, rows: newPreview.length })
-      goTo("preview", "done", `Grouped by ${groupBy}`)
+      setStep("preview")
     } catch (err: unknown) {
-      setAggError(axios.isAxiosError(err) ? "Aggregation failed." : "Aggregation failed.")
+      if (axios.isAxiosError(err)) setAggError(err.response?.data?.detail ?? "Aggregation failed.")
+      else setAggError("Aggregation failed.")
     } finally {
       setAggLoading(false)
     }
   }
 
-  const handleSkipAggregate = () => goTo("preview", "skipped")
+  const stepOrder: Step[] = ["nulls", "split", "aggregate", "preview"]
+  const stepIndex = stepOrder.indexOf(step)
 
-  // ── Reset (back to the very original upload) ──
-  const handleReset = () => {
-    onTransform(originalRef.current)
-    setStepStatus({ nulls: "active", split: "upcoming", aggregate: "upcoming", preview: "upcoming" })
-    setSummaries({ nulls: null, split: null, aggregate: null, preview: null })
-    setCurrentStep("nulls")
-    setNullError(null)
-    setSplitError(null)
-    setAggError(null)
+  function stepState(s: Step): "done" | "active" | "pending" {
+    const i = stepOrder.indexOf(s)
+    if (i < stepIndex) return "done"
+    if (i === stepIndex) return "active"
+    return "pending"
   }
 
-  const stepMap: Record<StepId, StepMeta> = Object.fromEntries(STEP_ORDER.map(s => [s.id, s])) as Record<StepId, StepMeta>
+  // skip nulls step if no nulls
+  const showNulls = nulls.length > 0 || step === "nulls"
 
   return (
-    <div
-      className="rounded-2xl p-5"
-      style={{ background: "#F7F4F3" }}
-    >
-      <div className="flex items-center gap-2 mb-5">
-        <span style={{ color: "#9DB6C9" }} className="text-sm">←</span>
-        <p className="text-sm font-medium" style={{ color: "#9DB6C9" }}>back</p>
-        <p className="ml-auto text-base font-semibold" style={{ color: "#324E66" }}>Before we go on...</p>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+
+      {/* header */}
+      <div style={{ padding: "10px 14px", borderBottom: `0.5px solid #dce8f0` }}>
+        <p style={{ fontSize: 11, color: BLUE.mid, fontWeight: 500, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+          Before we go on...
+        </p>
       </div>
 
-      {/* Step 1: nulls */}
-      <Step
-        meta={stepMap.nulls}
-        status={stepStatus.nulls}
-        summary={summaries.nulls}
-      >
-        {nullsLoading ? (
-          <p className="text-xs" style={{ color: "#9DB6C9" }}>Checking for missing values…</p>
-        ) : nulls.length === 0 ? (
-          <p className="text-xs" style={{ color: "#9DB6C9" }}>No missing values found.</p>
-        ) : (
+      {/* steps */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+
+        {/* ── Step 1: nulls ── */}
+        {showNulls && (
           <>
-            {nulls.map(n => {
-              const spec = specs[n.column] ?? { strategy: "ignore" }
-              const pct = ((n.null_count / n.total) * 100).toFixed(1)
-              return (
-                <div key={n.column} className="flex flex-col gap-1.5 pb-2 border-b last:border-0 last:pb-0" style={{ borderColor: "#E8EFF4" }}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium" style={{ color: "#324E66" }}>{n.column}</span>
-                    <span className="text-xs font-mono" style={{ color: "#9DB6C9" }}>{n.is_numeric ? "numeric" : "string"}</span>
-                    <span className="text-xs ml-auto" style={{ color: "#5F7B94" }}>
-                      {n.null_count} <span style={{ color: "#9DB6C9" }}>({pct}%)</span>
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {NULL_STRATEGIES.map(s => {
-                      if ((s === "mean" || s === "median" || s === "interpolate") && !n.is_numeric) return null
-                      return <Pill key={s} label={s} active={spec.strategy === s} onClick={() => setOne(n.column, s)} />
-                    })}
-                    {spec.strategy === "fill" && (
-                      <input
-                        type="text"
-                        placeholder="value"
-                        value={spec.value ?? ""}
-                        onChange={e => setValue(n.column, e.target.value)}
-                        className="text-xs rounded-lg px-2 py-0.5 w-20 border"
-                        style={{ borderColor: "#E8EFF4" }}
-                      />
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-            <ActionRow onApply={handleApplyNulls} onSkip={handleSkipNulls} loading={nullApplying} error={nullError} applyLabel="Apply" />
+            <StepShell
+              num={1} title="Clean null values"
+              state={stepState("nulls")}
+              onSkip={() => setStep("split")}
+              badge={nulls.length > 0 && stepState("nulls") !== "done" ? (
+                <span style={{ fontSize: 9, padding: "1px 7px", borderRadius: 99, background: "#faeeda", color: "#854f0b" }}>
+                  {nulls.length} column{nulls.length !== 1 ? "s" : ""}
+                </span>
+              ) : undefined}
+            >
+              {stepState("nulls") === "active" && nulls.length > 0 && (
+                <>
+                  {nulls.map(n => {
+                    const spec = nullSpecs[n.column] ?? { strategy: "ignore" as NullStrategy }
+                    const pct  = ((n.null_count / n.total) * 100).toFixed(1)
+                    return (
+                      <ColRow key={n.column} name={n.column} type={n.is_numeric ? "numeric" : "string"}>
+                        <span style={{ fontSize: 10, color: "#b45309", marginBottom: 2 }}>
+                          {n.null_count} nulls ({pct}%)
+                        </span>
+                        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 4, width: "100%" }}>
+                          {NULL_STRATEGIES.map(s => {
+                            if ((s === "mean" || s === "median" || s === "interpolate") && !n.is_numeric) return null
+                            return (
+                              <Pill key={s} label={s} active={spec.strategy === s}
+                                onClick={() => setNullSpecs(prev => ({ ...prev, [n.column]: { ...prev[n.column], strategy: s } }))} />
+                            )
+                          })}
+                          {spec.strategy === "fill" && (
+                            <input
+                              type="text" placeholder="value"
+                              value={spec.value ?? ""}
+                              onChange={e => setNullSpecs(prev => ({ ...prev, [n.column]: { ...prev[n.column], value: e.target.value } }))}
+                              style={{ fontSize: 11, border: "0.5px solid #c5d5e0", borderRadius: 6, padding: "2px 8px", width: 80 }}
+                            />
+                          )}
+                        </div>
+                      </ColRow>
+                    )
+                  })}
+                  {nullError && <p style={{ fontSize: 10, color: "#e24b4a" }}>{nullError}</p>}
+                  <ApplyBtn onClick={handleApplyNulls} loading={nullApplying} label="Apply" />
+                </>
+              )}
+              {stepState("nulls") === "done" && (
+                <p style={{ fontSize: 10, color: BLUE.dark }}>
+                  {Object.entries(nullSpecs).filter(([, s]) => s.strategy !== "ignore").map(([col, s]) => `${col} → ${s.strategy}`).join(", ") || "skipped"}
+                </p>
+              )}
+            </StepShell>
+            <Connector />
           </>
         )}
-      </Step>
 
-      {/* Step 2: split coordinates */}
-      <Step meta={stepMap.split} status={stepStatus.split} summary={summaries.split}>
-        {coordCols.length === 0 ? (
-          <p className="text-xs" style={{ color: "#9DB6C9" }}>No coordinate-like columns detected.</p>
-        ) : (
-          <>
-            <div className="flex flex-col gap-2">
-              {coordCols.map(col => (
-                <div key={col} className="flex items-center justify-between">
-                  <span className="text-xs" style={{ color: "#324E66" }}>
-                    {col} <span className="font-mono" style={{ color: "#9DB6C9" }}>object</span>
-                  </span>
-                  <Pill
-                    label="split → x y z"
-                    active={selectedCols.includes(col)}
-                    onClick={() =>
-                      setSelectedCols(prev =>
-                        prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
-                      )
-                    }
-                  />
-                </div>
-              ))}
-            </div>
-            <ActionRow onApply={handleSplit} onSkip={handleSkipSplit} loading={splitLoading} error={splitError} applyLabel="Split" />
-          </>
-        )}
-      </Step>
+        {/* ── Step 2: split ── */}
+        <StepShell
+          num={showNulls ? 2 : 1} title="Split coordinates"
+          state={stepState("split")}
+          onSkip={() => setStep("aggregate")}
+        >
+          {stepState("split") === "active" && (
+            <>
+              {coordCols.length === 0 ? (
+                <p style={{ fontSize: 10, color: BLUE.mid }}>No coordinate columns detected.</p>
+              ) : (
+                coordCols.map(col => (
+                  <label key={col} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: BLUE.darkest, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedCols.includes(col)}
+                      onChange={e => setSelectedCols(prev => e.target.checked ? [...prev, col] : prev.filter(c => c !== col))}
+                    />
+                    {col}
+                  </label>
+                ))
+              )}
+              {splitError && <p style={{ fontSize: 10, color: "#e24b4a" }}>{splitError}</p>}
+              <ApplyBtn onClick={handleSplit} loading={splitLoading} label="Split" />
+            </>
+          )}
+          {stepState("split") === "done" && (
+            <p style={{ fontSize: 10, color: BLUE.dark }}>
+              {selectedCols.length > 0 ? selectedCols.join(", ") + " → split" : "skipped"}
+            </p>
+          )}
+        </StepShell>
 
-      {/* Step 3: group & aggregate */}
-      <Step meta={stepMap.aggregate} status={stepStatus.aggregate} summary={summaries.aggregate}>
-        <div className="flex items-center gap-2">
-          <span className="text-xs shrink-0" style={{ color: "#5F7B94" }}>Group by</span>
-          <select
-            value={groupBy}
-            onChange={e => setGroupBy(e.target.value)}
-            className="text-xs rounded-lg px-2 py-1 flex-1 min-w-0 border"
-            style={{ borderColor: "#E8EFF4", color: "#324E66" }}
-          >
-            {columns.map(col => (
-              <option key={col.name} value={col.name}>{col.name}</option>
-            ))}
-          </select>
-        </div>
+        <Connector />
 
-        {numericCols.length > 0 && (
-          <div className="flex flex-col gap-2 pt-1 border-t" style={{ borderColor: "#E8EFF4" }}>
-            {numericCols.map(col => (
-              <ColRow key={col.name} name={col.name} type={col.type}>
-                {AGGS.map(agg => (
-                  <Pill
-                    key={agg} label={agg}
-                    active={aggPerCol[col.name] === agg}
-                    onClick={() => setAggPerCol(prev => ({ ...prev, [col.name]: agg }))}
-                  />
-                ))}
-              </ColRow>
-            ))}
-          </div>
-        )}
-
-        {stringCols.length > 0 && (
-          <div className="flex flex-col gap-2 pt-1 border-t" style={{ borderColor: "#E8EFF4" }}>
-            {stringCols.map(col => (
-              <ColRow key={col.name} name={col.name} type="string">
-                {STRING_AGGS.map(agg => (
-                  <Pill
-                    key={agg} label={agg}
-                    active={strAggPerCol[col.name] === agg}
-                    activeStyle={{ background: "#324E66", borderColor: "#324E66" }}
-                    onClick={() => setStrAggPerCol(prev => ({ ...prev, [col.name]: agg }))}
-                  />
-                ))}
-              </ColRow>
-            ))}
-          </div>
-        )}
-
-        <ActionRow onApply={handleAggregate} onSkip={handleSkipAggregate} loading={aggLoading} error={aggError} applyLabel="Preview" />
-      </Step>
-
-      {/* Step 4: preview & continue */}
-      <Step meta={stepMap.preview} status={stepStatus.preview}>
-        {stepStatus.preview === "active" && (
-          <>
-            <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#E8EFF4" }}>
-              <div className="px-3 py-2 text-xs" style={{ background: "#E8EFF4", color: "#324E66" }}>
-                {preview.length} rows shown · {columns.length} columns
+        {/* ── Step 3: aggregate ── */}
+        <StepShell
+          num={showNulls ? 3 : 2} title="Group & aggregate"
+          state={stepState("aggregate")}
+          onSkip={() => setStep("preview")}
+        >
+          {stepState("aggregate") === "active" && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: BLUE.dark, flexShrink: 0 }}>Group by</span>
+                <select
+                  value={groupBy}
+                  onChange={e => setGroupBy(e.target.value)}
+                  style={{ fontSize: 11, border: "0.5px solid #c5d5e0", borderRadius: 6, padding: "3px 6px", color: BLUE.darkest, background: "white", flex: 1 }}
+                >
+                  {columns.map(col => <option key={col.name} value={col.name}>{col.name}</option>)}
+                </select>
               </div>
-              <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                <table className="min-w-full text-xs">
-                  <thead style={{ background: "#F7F4F3" }}>
-                    <tr>
-                      {columns.map(col => (
-                        <th key={col.name} className="px-3 py-1.5 text-left font-medium whitespace-nowrap" style={{ color: "#5F7B94" }}>
-                          {col.name}
-                        </th>
+
+              {columns.filter(isNumeric).length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 6, borderTop: "0.5px solid #dce8f0" }}>
+                  {columns.filter(isNumeric).map(col => (
+                    <ColRow key={col.name} name={col.name} type={col.type}>
+                      {AGGS.map(agg => (
+                        <Pill key={agg} label={agg} active={aggPerCol[col.name] === agg}
+                          onClick={() => setAggPerCol(prev => ({ ...prev, [col.name]: agg }))} />
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.slice(0, 8).map((row, i) => (
-                      <tr key={i}>
-                        {columns.map(col => (
-                          <td key={col.name} className="px-3 py-1.5 whitespace-nowrap" style={{ color: "#324E66" }}>
-                            {String(row[col.name] ?? "")}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </ColRow>
+                  ))}
+                </div>
+              )}
+
+              {columns.filter(c => !isNumeric(c) && c.name !== groupBy).length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 6, borderTop: "0.5px solid #dce8f0" }}>
+                  {columns.filter(c => !isNumeric(c) && c.name !== groupBy).map(col => (
+                    <ColRow key={col.name} name={col.name} type="string">
+                      {STRING_AGGS.map(agg => (
+                        <Pill key={agg} label={agg} active={strAggPerCol[col.name] === agg}
+                          onClick={() => setStrAggPerCol(prev => ({ ...prev, [col.name]: agg }))} />
+                      ))}
+                    </ColRow>
+                  ))}
+                </div>
+              )}
+
+              {aggError && <p style={{ fontSize: 10, color: "#e24b4a" }}>{aggError}</p>}
+              <ApplyBtn onClick={handleAggregate} loading={aggLoading} label="Preview result" />
+            </>
+          )}
+          {stepState("aggregate") === "done" && (
+            <p style={{ fontSize: 10, color: BLUE.dark }}>grouped by {groupBy}</p>
+          )}
+        </StepShell>
+
+        <Connector />
+
+        {/* ── Step 4: preview ── */}
+        <StepShell
+          num={showNulls ? 4 : 3} title="Preview & continue"
+          state={stepState("preview")}
+        >
+          {stepState("preview") === "active" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <p style={{ fontSize: 11, color: BLUE.dark }}>
+                Looking good? Continue to the chart builder or start fresh.
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={onContinue}
+                  style={{ fontSize: 11, padding: "6px 16px", borderRadius: 8, background: BLUE.darkest, color: "#fff", border: "none", cursor: "pointer" }}
+                >
+                  Continue →
+                </button>
+                <button
+                  onClick={onReset}
+                  style={{ fontSize: 11, padding: "6px 14px", borderRadius: 8, background: "transparent", color: BLUE.dark, border: `0.5px solid #c5d5e0`, cursor: "pointer" }}
+                >
+                  Reset
+                </button>
               </div>
             </div>
+          )}
+        </StepShell>
 
-            <div className="flex items-center gap-3 pt-1">
-              <button
-                onClick={handleReset}
-                className="px-4 py-1.5 text-xs font-medium rounded-lg border transition-colors"
-                style={{ borderColor: "#9DB6C9", color: "#5F7B94", background: "transparent" }}
-              >
-                Start over
-              </button>
-              <button
-                onClick={onContinue}
-                className="px-4 py-1.5 text-xs font-medium rounded-lg transition-colors"
-                style={{ background: "#324E66", color: "#F7F4F3" }}
-              >
-                Continue to Analysis →
-              </button>
-            </div>
-          </>
-        )}
-      </Step>
+      </div>
     </div>
   )
 }

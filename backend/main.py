@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import uploads, transforms
+from routers import uploads, transforms, graph
 
 app = FastAPI(title="WVLENGTH API")
 
@@ -15,6 +15,7 @@ app.add_middleware(
 
 app.include_router(uploads.router)  
 app.include_router(transforms.router)
+app.include_router(graph.router)
 
 @app.get("/")
 def root():

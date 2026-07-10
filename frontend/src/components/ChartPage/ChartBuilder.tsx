@@ -14,6 +14,7 @@ interface Column {
 interface Props {
   columns: Column[]
   preview: Record<string, unknown>[]
+  fileId?: string
 }
 
 const CHART_TYPES = [
@@ -33,7 +34,6 @@ const AGGREGATIONS = [
   { value: "min",    label: "Min" },
   { value: "max",    label: "Max" },
 ]
-
 
 const DEFAULT_AXIS: AxisConfig = {
   yMin: "", yMax: "", yTickInterval: "", binSize: ""
@@ -64,7 +64,7 @@ function renderChart(
   }
 }
 
-export default function ChartBuilder({ columns, preview }: Props) {
+export default function ChartBuilder({ columns, preview, fileId }: Props) {
   const [chartType, setChartType] = useState("bar")
   const [groupBy, setGroupBy]     = useState(columns[0]?.name ?? "")
   const [aggregation, setAggregation] = useState("mean")
@@ -79,19 +79,37 @@ export default function ChartBuilder({ columns, preview }: Props) {
 
   const xIsNumeric = columns.find(c => c.name === groupBy)?.type !== "object"
 
+  // reset chart config when the underlying dataset changes (e.g. user switches files)
+  // prevents groupBy/yColumns from referencing columns that no longer exist
+  useEffect(() => {
+    setGroupBy(columns[0]?.name ?? "")
+    setYColumns(
+      [columns.find(c => c.type.includes("int") || c.type.includes("float"))?.name ?? ""]
+    )
+    setChartData([])
+    setLineData([])
+    setError(null)
+  }, [columns])
+
   // bar chart aggregation
   useEffect(() => {
     if (chartType === "line") return
     if (!groupBy || yColumns.length === 0) return
 
     const binSize = axisConfig.binSize !== "" ? parseFloat(axisConfig.binSize) : undefined
-    if (axisConfig.binSize !== "" && (isNaN(binSize!) || binSize! <= 0)) return
+    if (axisConfig.binSize !== "" && (isNaN(binSize!) || binSize! <= 0)) {
+      // invalid bin size — clear stale chart data instead of leaving old results on screen
+      setChartData([])
+      setError("Bin size must be a positive number.")
+      return
+    }
 
     const run = async () => {
       setLoading(true)
       setError(null)
       try {
         const result = await aggregateMultiple({
+          file_id: fileId,
           data: preview,
           group_by: groupBy,
           value_cols: yColumns,
@@ -106,19 +124,19 @@ export default function ChartBuilder({ columns, preview }: Props) {
       }
     }
     run()
-  }, [chartType, groupBy, yColumns, aggregation, preview, axisConfig.binSize])
+  }, [chartType, groupBy, yColumns, aggregation, preview, fileId, axisConfig.binSize])
 
   // line chart aggregation
   useEffect(() => {
     if (chartType !== "line") return
     if (!groupBy || yColumns.length === 0) return
-    
 
     const run = async () => {
       setLoading(true)
       setError(null)
       try {
         const result = await aggregateMultiple({
+          file_id: fileId,
           data: preview,
           group_by: groupBy,
           value_cols: yColumns,
@@ -132,9 +150,7 @@ export default function ChartBuilder({ columns, preview }: Props) {
       }
     }
     run()
-  }, [chartType, groupBy, yColumns, aggregation, preview])
-
-  
+  }, [chartType, groupBy, yColumns, aggregation, preview, fileId])
 
   return (
     <div className="mt-10">

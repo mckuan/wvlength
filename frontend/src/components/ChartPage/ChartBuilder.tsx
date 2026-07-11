@@ -2,9 +2,16 @@
 import { useState, useEffect } from "react"
 import BarChartView from "../charts/BarChartView"
 import LineChartView from "../charts/LineChartView"
+import BoxPlotChartView from "../charts/BoxPlotChartView"
+import HeatmapChartView from "../charts/HeatmapChartView"
+import HistogramChartView from "../charts/HistogramChartView"
+import ScatterChartView from "../charts/ScatterChartView"
+import ChartTypeIcon from "./ChartTypeIcon"
 import ChartOptions from "./ChartOptions"
 import type { AxisConfig } from "./ChartOptions"
+import SummaryPanel from "./SummaryPanel"
 import { aggregateMultiple } from "../../lib/datasets"
+import { PANEL_BG, FIELD_BORDER, FIELD_BG, TEXT_MUTED, ACCENT, ACCENT_TEXT, CANVAS_BORDER } from "../../lib/chartColors"
 
 interface Column {
   name: string
@@ -22,51 +29,26 @@ const CHART_TYPES = [
   { value: "line",      label: "Line" },
   { value: "scatter",   label: "Scatter" },
   { value: "histogram", label: "Histogram" },
-  { value: "boxplot",   label: "Box Plot" },
+  { value: "boxplot",   label: "Box plot" },
   { value: "heatmap",   label: "Heatmap" },
 ]
 
 const AGGREGATIONS = [
-  { value: "mean",   label: "Mean" },
-  { value: "sum",    label: "Sum" },
-  { value: "count",  label: "Count" },
-  { value: "median", label: "Median" },
-  { value: "min",    label: "Min" },
-  { value: "max",    label: "Max" },
+  { value: "mean", label: "Mean" }, { value: "sum", label: "Sum" },
+  { value: "count", label: "Count" }, { value: "median", label: "Median" },
+  { value: "min", label: "Min" }, { value: "max", label: "Max" },
 ]
 
 const DEFAULT_AXIS: AxisConfig = {
-  yMin: "", yMax: "", yTickInterval: "", binSize: ""
+  yMin: "", yMax: "", yTickInterval: "", binSize: "", scaleMin: "", scaleMax: "",
 }
 
-function renderChart(
-  type: string,
-  data: Record<string, string | number>[],
-  xAxis: string,
-  yLabels: string[],
-  axisConfig: AxisConfig,
-  preview: Record<string, unknown>[]
-) {
-  switch (type) {
-    case "bar":
-      return (
-        <BarChartView
-          data={data}
-          xLabel={xAxis}
-          yLabels={yLabels}
-          xIsNumeric={typeof data[0]?.x === "number"}
-          axisConfig={axisConfig}
-          allRows={preview}
-        />
-      )
-    default:
-      return <p className="text-gray-400 text-sm">This chart type is coming soon.</p>
-  }
-}
+const RAW_ROW_CHARTS = new Set(["scatter", "histogram", "boxplot", "heatmap"])
 
 export default function ChartBuilder({ columns, preview, fileId }: Props) {
   const [chartType, setChartType] = useState("bar")
   const [groupBy, setGroupBy]     = useState(columns[0]?.name ?? "")
+  const [heatmapColBy, setHeatmapColBy] = useState(columns[1]?.name ?? columns[0]?.name ?? "")
   const [aggregation, setAggregation] = useState("mean")
   const [chartData, setChartData] = useState<Record<string, string | number>[]>([])
   const [lineData, setLineData]   = useState<Record<string, string | number>[]>([])
@@ -77,28 +59,24 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
   const [error, setError]     = useState<string | null>(null)
   const [axisConfig, setAxisConfig] = useState<AxisConfig>(DEFAULT_AXIS)
 
-  const xIsNumeric = columns.find(c => c.name === groupBy)?.type !== "object"
+  const numericColumns = columns.filter(c => c.type.includes("int") || c.type.includes("float"))
+  const isMultiValueChart = chartType === "bar" || chartType === "line" || chartType === "scatter"
 
-  // reset chart config when the underlying dataset changes (e.g. user switches files)
-  // prevents groupBy/yColumns from referencing columns that no longer exist
   useEffect(() => {
     setGroupBy(columns[0]?.name ?? "")
-    setYColumns(
-      [columns.find(c => c.type.includes("int") || c.type.includes("float"))?.name ?? ""]
-    )
+    setHeatmapColBy(columns[1]?.name ?? columns[0]?.name ?? "")
+    setYColumns([columns.find(c => c.type.includes("int") || c.type.includes("float"))?.name ?? ""])
     setChartData([])
     setLineData([])
     setError(null)
   }, [columns])
 
-  // bar chart aggregation
   useEffect(() => {
-    if (chartType === "line") return
+    if (chartType !== "bar") return
     if (!groupBy || yColumns.length === 0) return
 
     const binSize = axisConfig.binSize !== "" ? parseFloat(axisConfig.binSize) : undefined
     if (axisConfig.binSize !== "" && (isNaN(binSize!) || binSize! <= 0)) {
-      // invalid bin size — clear stale chart data instead of leaving old results on screen
       setChartData([])
       setError("Bin size must be a positive number.")
       return
@@ -109,12 +87,8 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
       setError(null)
       try {
         const result = await aggregateMultiple({
-          file_id: fileId,
-          data: preview,
-          group_by: groupBy,
-          value_cols: yColumns,
-          aggregation,
-          bin_size: binSize,
+          file_id: fileId, data: preview, group_by: groupBy,
+          value_cols: yColumns, aggregation, bin_size: binSize,
         })
         setChartData(result)
       } catch {
@@ -126,7 +100,6 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
     run()
   }, [chartType, groupBy, yColumns, aggregation, preview, fileId, axisConfig.binSize])
 
-  // line chart aggregation
   useEffect(() => {
     if (chartType !== "line") return
     if (!groupBy || yColumns.length === 0) return
@@ -136,11 +109,8 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
       setError(null)
       try {
         const result = await aggregateMultiple({
-          file_id: fileId,
-          data: preview,
-          group_by: groupBy,
-          value_cols: yColumns,
-          aggregation,
+          file_id: fileId, data: preview, group_by: groupBy,
+          value_cols: yColumns, aggregation,
         })
         setLineData(result)
       } catch {
@@ -152,115 +122,157 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
     run()
   }, [chartType, groupBy, yColumns, aggregation, preview, fileId])
 
+  useEffect(() => {
+    if (RAW_ROW_CHARTS.has(chartType)) {
+      setLoading(false)
+      setError(null)
+    }
+  }, [chartType])
+
+  function renderChart() {
+    switch (chartType) {
+      case "bar":
+        return chartData.length > 0
+          ? <BarChartView data={chartData} xLabel={groupBy} yLabels={yColumns}
+              xIsNumeric={typeof chartData[0]?.x === "number"} axisConfig={axisConfig} allRows={preview} />
+          : <EmptyState text="Pick a group and at least one column to plot." />
+      case "line":
+        return lineData.length > 0
+          ? <LineChartView data={lineData} xLabel={groupBy} yLabels={yColumns} axisConfig={axisConfig} />
+          : <EmptyState text="Pick a group and at least one column to plot." />
+      case "scatter":
+        if (yColumns.length === 0 || !groupBy) return <EmptyState text="Pick an X axis and at least one Y column." />
+        return <ScatterChartView allRows={preview} xLabel={groupBy} yLabels={yColumns} axisConfig={axisConfig} />
+      case "histogram":
+        if (!yColumns[0]) return <EmptyState text="Pick a numeric column to bucket." />
+        return <HistogramChartView allRows={preview} column={yColumns[0]} axisConfig={axisConfig} />
+      case "boxplot":
+        if (!yColumns[0] || !groupBy) return <EmptyState text="Pick a group and a numeric column." />
+        return <BoxPlotChartView allRows={preview} groupBy={groupBy} valueCol={yColumns[0]} axisConfig={axisConfig} />
+      case "heatmap":
+        if (!yColumns[0] || !groupBy || !heatmapColBy) return <EmptyState text="Pick a row axis, a column axis, and a value." />
+        return <HeatmapChartView allRows={preview} rowCol={groupBy} colCol={heatmapColBy} valueCol={yColumns[0]}
+                 scaleMin={axisConfig.scaleMin !== "" ? parseFloat(axisConfig.scaleMin) : undefined}
+                 scaleMax={axisConfig.scaleMax !== "" ? parseFloat(axisConfig.scaleMax) : undefined} />
+      default:
+        return null
+    }
+  }
+
   return (
-    <div className="mt-10">
-      <h2 className="text-lg font-semibold mb-4">Chart Builder</h2>
+    <div className="mt-10 rounded-xl p-5" style={{ background: PANEL_BG }}>
+      <h2 className="text-lg font-semibold mb-4">Chart builder</h2>
 
-      {/* Chart type pills */}
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {CHART_TYPES.map(ct => (
-          <button
-            key={ct.value}
-            onClick={() => setChartType(ct.value)}
-            className={`px-4 py-1.5 rounded-full text-sm border transition-colors
-              ${chartType === ct.value
-                ? "bg-indigo-500 text-white border-indigo-500"
-                : "text-gray-500 border-gray-200 hover:border-gray-400"
-              }`}
-          >
-            {ct.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Axis selectors */}
-      <div className="flex gap-6 mb-4 flex-wrap">
-        <div>
-          <label className="block text-sm text-gray-500 mb-1">X Axis</label>
-          <select
-            value={groupBy}
-            onChange={e => setGroupBy(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          >
-            {columns.map(col => (
-              <option key={col.name} value={col.name}>{col.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm text-gray-500 mb-1">Aggregation</label>
-          <select
-            value={aggregation}
-            onChange={e => setAggregation(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          >
-            {AGGREGATIONS.map(a => (
-              <option key={a.value} value={a.value}>{a.label}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Y columns multi-select */}
-      <div className="mb-4">
-        <label className="block text-sm text-gray-500 mb-2">
-          {chartType === "bar" ? "Y Columns (grouped bars)" : "Y Columns (lines)"}
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {columns
-          .filter(col => col.type.includes("int") || col.type.includes("float"))
-          .map(col => (
+      <div className="flex gap-5 items-start">
+        <div className="flex flex-col gap-0.5 shrink-0 w-32 pr-3.5" style={{ borderRight: `1px solid ${FIELD_BORDER}` }}>
+          {CHART_TYPES.map(ct => (
             <button
-              key={col.name}
-              onClick={() => {
-                setYColumns(prev =>
-                  prev.includes(col.name)
-                    ? prev.filter(c => c !== col.name)
-                    : [...prev, col.name]
-                )
+              key={ct.value}
+              onClick={() => setChartType(ct.value)}
+              className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left transition-colors"
+              style={{
+                background: chartType === ct.value ? ACCENT : "transparent",
+                color: chartType === ct.value ? ACCENT_TEXT : TEXT_MUTED,
               }}
-              className={`px-3 py-1 rounded-full text-xs border transition-colors
-                ${yColumns.includes(col.name)
-                  ? "bg-indigo-500 text-white border-indigo-500"
-                  : "text-gray-500 border-gray-200 hover:border-gray-400"
-                }`}
             >
-              {col.name}
+              <ChartTypeIcon type={ct.value} className="w-4 h-4 shrink-0" />
+              {ct.label}
             </button>
           ))}
         </div>
-      </div>
 
-      {/* Options panel */}
-      <ChartOptions
-        axisConfig={axisConfig}
-        xIsNumeric={xIsNumeric}
-        columns={columns}
-        preview={preview}
-        yColumns={yColumns}
-        onAxisChange={setAxisConfig}
-      />
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-end gap-4 pb-3.5 mb-3.5" style={{ borderBottom: `1px solid ${FIELD_BORDER}` }}>
+            <Field label={chartType === "heatmap" ? "Row axis" : chartType === "boxplot" ? "Group by" : "X axis"}>
+              <select value={groupBy} onChange={e => setGroupBy(e.target.value)}
+                className="rounded-md px-2.5 py-1.5 text-sm" style={{ border: `1px solid ${FIELD_BORDER}`, background: FIELD_BG }}>
+                {columns.map(col => <option key={col.name} value={col.name}>{col.name}</option>)}
+              </select>
+            </Field>
 
-      {/* Chart */}
-      <div className="mt-6">
-        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
-        {loading
-          ? <p className="text-gray-400 text-sm">Calculating...</p>
-          : chartType === "line"
-            ? lineData.length > 0
-              ? <LineChartView
-                  data={lineData}
-                  xLabel={groupBy}
-                  yLabels={yColumns}
-                  axisConfig={axisConfig}
-                />
-              : <p className="text-gray-400 text-sm">Select options above to render a chart.</p>
-            : chartData.length > 0
-              ? renderChart(chartType, chartData, groupBy, yColumns, axisConfig, preview)
-              : <p className="text-gray-400 text-sm">Select options above to render a chart.</p>
-        }
+            {chartType === "heatmap" && (
+              <Field label="Column axis">
+                <select value={heatmapColBy} onChange={e => setHeatmapColBy(e.target.value)}
+                  className="rounded-md px-2.5 py-1.5 text-sm" style={{ border: `1px solid ${FIELD_BORDER}`, background: FIELD_BG }}>
+                  {columns.map(col => <option key={col.name} value={col.name}>{col.name}</option>)}
+                </select>
+              </Field>
+            )}
+
+            {(chartType === "bar" || chartType === "line") && (
+              <Field label="Aggregation">
+                <select value={aggregation} onChange={e => setAggregation(e.target.value)}
+                  className="rounded-md px-2.5 py-1.5 text-sm" style={{ border: `1px solid ${FIELD_BORDER}`, background: FIELD_BG }}>
+                  {AGGREGATIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                </select>
+              </Field>
+            )}
+
+            <Field
+              label={
+                chartType === "histogram" ? "Column" :
+                chartType === "boxplot" || chartType === "heatmap" ? "Value column" :
+                "Y columns"
+              }
+              className="flex-1 min-w-[220px]"
+            >
+              <div className="flex flex-wrap gap-1.5">
+                {numericColumns.map(col => (
+                  <button
+                    key={col.name}
+                    onClick={() => {
+                      if (isMultiValueChart) {
+                        setYColumns(prev => prev.includes(col.name) ? prev.filter(c => c !== col.name) : [...prev, col.name])
+                      } else {
+                        setYColumns([col.name])
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-full text-xs transition-colors"
+                    style={
+                      yColumns.includes(col.name)
+                        ? { background: ACCENT, color: ACCENT_TEXT, border: `1px solid ${ACCENT}` }
+                        : { color: TEXT_MUTED, border: `1px solid ${FIELD_BORDER}` }
+                    }
+                  >
+                    {col.name}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </div>
+
+          <div className="rounded-lg mb-4 flex items-center justify-center" style={{ height: 260, border: `1px dashed ${CANVAS_BORDER}`, background: "#fff" }}>
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+            {!error && (loading ? <p className="text-sm" style={{ color: TEXT_MUTED }}>Calculating…</p> : renderChart())}
+          </div>
+
+          <div className="flex gap-4">
+            <ChartOptions
+              chartType={chartType}
+              axisConfig={axisConfig}
+              xIsNumeric={columns.find(c => c.name === groupBy)?.type !== "object"}
+              columns={columns}
+              preview={preview}
+              yColumns={yColumns}
+              onAxisChange={setAxisConfig}
+            />
+            <SummaryPanel preview={preview} numericColumns={numericColumns.map(c => c.name)} selectedColumn={yColumns[0]} />
+          </div>
+        </div>
       </div>
     </div>
   )
+}
+
+function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={className}>
+      <label className="block text-xs mb-1.5" style={{ color: TEXT_MUTED }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <p className="text-sm" style={{ color: TEXT_MUTED }}>{text}</p>
 }

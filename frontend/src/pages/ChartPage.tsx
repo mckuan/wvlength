@@ -6,16 +6,18 @@ export default function ChartPage() {
   const navigate = useNavigate()
   const dataset = location.state?.dataset
 
-  // if no data, send them back to upload
   if (!dataset) {
     navigate("/")
     return null
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-12">
-      <h1 className="text-2xl font-bold mb-8">Chart Builder</h1>
-      <ChartBuilder columns={dataset.columns} preview={dataset.preview} />
+    <div className="w-full min-h-screen px-6 py-8" style={{ background: "#F7F4F3" }}>
+      <ChartBuilder
+        columns={dataset.columns}
+        preview={dataset.preview}
+        fileId={dataset.file_id}
+      />
     </div>
   )
 }

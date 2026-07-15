@@ -1,5 +1,6 @@
 //parent of ChartOptions and individual chart views, manages/renders state for both
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from "react"
+import axios from "axios"
 import BarChartView from "../charts/BarChartView"
 import LineChartView from "../charts/LineChartView"
 import BoxPlotChartView from "../charts/BoxPlotChartView"
@@ -23,10 +24,32 @@ interface Column {
   type: string
 }
 
+// shape of the chart_config record produced by (and saved to) the /projects
+// backend — used to restore a saved project's exact chart settings
+export interface ChartConfigSnapshot {
+  chart_type: string
+  group_by?: string
+  heatmap_col_by?: string
+  aggregation?: string
+  y_columns: string[]
+  axis_config: AxisConfig
+  color_config: ColorConfig
+}
+
 interface Props {
   columns: Column[]
   preview: Record<string, unknown>[]
   fileId?: string
+  // when opening a saved project, seeds initial state instead of the defaults below
+  initialConfig?: ChartConfigSnapshot
+}
+
+// exposed to the parent page via ref, so header buttons living outside
+// ChartBuilder (e.g. in ChartPage) can trigger export / add-to-project
+// without ChartBuilder's internal state needing to be lifted up
+export interface ChartBuilderHandle {
+  exportChart: () => void
+  addToProject: () => void
 }
 
 const CHART_TYPES = [
@@ -56,20 +79,30 @@ const RAW_ROW_CHARTS = new Set(["scatter", "histogram", "boxplot", "heatmap"])
 // chart types where per-value or per-threshold coloring is meaningful
 const COLORABLE_CHART_TYPES = new Set(["bar", "line", "scatter", "boxplot"])
 
-export default function ChartBuilder({ columns, preview, fileId }: Props) {
-  const [chartType, setChartType] = useState("bar")
-  const [groupBy, setGroupBy]     = useState(columns[0]?.name ?? "")
-  const [heatmapColBy, setHeatmapColBy] = useState(columns[1]?.name ?? columns[0]?.name ?? "")
-  const [aggregation, setAggregation] = useState("mean")
+const ChartBuilder = forwardRef<ChartBuilderHandle, Props>(function ChartBuilder(
+  { columns, preview, fileId, initialConfig },
+  ref
+) {
+  const [chartType, setChartType] = useState(initialConfig?.chart_type ?? "bar")
+  const [groupBy, setGroupBy]     = useState(
+    initialConfig?.group_by ?? columns[0]?.name ?? ""
+  )
+  const [heatmapColBy, setHeatmapColBy] = useState(
+    initialConfig?.heatmap_col_by ?? columns[1]?.name ?? columns[0]?.name ?? ""
+  )
+  const [aggregation, setAggregation] = useState(initialConfig?.aggregation ?? "mean")
   const [chartData, setChartData] = useState<Record<string, string | number>[]>([])
   const [lineData, setLineData]   = useState<Record<string, string | number>[]>([])
   const [yColumns, setYColumns]   = useState<string[]>(
+    initialConfig?.y_columns ??
     [columns.find(c => c.type.includes("int") || c.type.includes("float"))?.name ?? ""]
   )
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
-  const [axisConfig, setAxisConfig] = useState<AxisConfig>(DEFAULT_AXIS)
-  const [colorConfig, setColorConfig] = useState<ColorConfig>(DEFAULT_COLOR_CONFIG)
+  const [axisConfig, setAxisConfig] = useState<AxisConfig>(initialConfig?.axis_config ?? DEFAULT_AXIS)
+  const [colorConfig, setColorConfig] = useState<ColorConfig>(
+    initialConfig?.color_config ?? DEFAULT_COLOR_CONFIG
+  )
 
   const numericColumns = columns.filter(c => c.type.includes("int") || c.type.includes("float"))
   const categoricalColumns = useMemo(
@@ -91,8 +124,15 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
     return Array.from(seen)
   }
 
-  // reset chart config when the underlying dataset changes (e.g. user switches files)
+  // reset chart config when the underlying dataset actually changes (e.g. user
+  // switches files) — but not on first mount, so an initialConfig passed in
+  // from a reopened project doesn't get immediately wiped back to defaults
+  const didMountRef = useRef(false)
   useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
     setGroupBy(columns[0]?.name ?? "")
     setHeatmapColBy(columns[1]?.name ?? columns[0]?.name ?? "")
     setYColumns([columns.find(c => c.type.includes("int") || c.type.includes("float"))?.name ?? ""])
@@ -178,24 +218,62 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
     }
   }, [isColorable, colorConfig.colorBy])
 
+  function handleExportChart() {
+    // TODO: wire up actual export — e.g. rendering the chart canvas to PNG/SVG,
+    // or POSTing { chartType, groupBy, yColumns, axisConfig, colorConfig } to a
+    // backend export endpoint and downloading the result
+    console.log("export chart", { chartType, groupBy, yColumns, axisConfig, colorConfig })
+  }
+
+  async function handleAddToProject() {
+    if (!fileId) {
+      window.alert("This chart isn't attached to a file yet — can't save it.")
+      return
+    }
+    // TODO: swap window.prompt for a real "save project" modal
+    const name = window.prompt("Name this project:")
+    if (!name) return
+
+    try {
+      await axios.post("http://localhost:8000/projects/", {
+        name,
+        file_id: fileId,
+        chart_config: {
+          chart_type: chartType,
+          group_by: groupBy,
+          heatmap_col_by: heatmapColBy,
+          aggregation,
+          y_columns: yColumns,
+          axis_config: axisConfig,
+          color_config: colorConfig,
+        },
+      })
+      window.alert("Saved to workspace.")
+    } catch {
+      window.alert("Failed to save project — check your backend is running.")
+    }
+  }
+
+  useImperativeHandle(ref, () => ({
+    exportChart: handleExportChart,
+    addToProject: handleAddToProject,
+  }))
+
   function renderChart() {
     switch (chartType) {
       case "bar":
         if (chartData.length === 0) return <EmptyState text="Pick a group and at least one column to plot." />
-        {
-          const C: any = BarChartView
-          return (
-            <C
-              data={chartData}
-              xLabel={groupBy}
-              yLabels={yColumns}
-              xIsNumeric={typeof chartData[0]?.x === "number"}
-              axisConfig={axisConfig}
-              allRows={preview}
-              colorConfig={colorConfig}
-            />
-          )
-        }
+        return (
+          <BarChartView
+            data={chartData}
+            xLabel={groupBy}
+            yLabels={yColumns}
+            xIsNumeric={typeof chartData[0]?.x === "number"}
+            axisConfig={axisConfig}
+            allRows={preview}
+            colorConfig={colorConfig}
+          />
+        )
 
       case "line":
         if (lineData.length === 0) return <EmptyState text="Pick a group and at least one column to plot." />
@@ -430,7 +508,9 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
       </div>
     </div>
   )
-}
+})
+
+export default ChartBuilder
 
 function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (

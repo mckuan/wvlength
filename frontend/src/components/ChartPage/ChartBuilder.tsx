@@ -1,5 +1,5 @@
 //parent of ChartOptions and individual chart views, manages/renders state for both
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import BarChartView from "../charts/BarChartView"
 import LineChartView from "../charts/LineChartView"
 import BoxPlotChartView from "../charts/BoxPlotChartView"
@@ -9,9 +9,14 @@ import ScatterChartView from "../charts/ScatterChartView"
 import ChartTypeIcon from "./ChartTypeIcon"
 import ChartOptions from "./ChartOptions"
 import SummaryPanel from "./SummaryPanel"
+import ChartColor from "./ChartColor"
 import type { AxisConfig } from "./ChartOptions"
 import { aggregateMultiple } from "../../lib/datasets"
-import { FIELD_BORDER, FIELD_BG, TEXT_MUTED, ACCENT, ACCENT_TEXT, CANVAS_BORDER } from "../../lib/chartColors"
+import {
+  FIELD_BORDER, FIELD_BG, TEXT_MUTED, ACCENT, ACCENT_TEXT, CANVAS_BORDER,
+  DEFAULT_COLOR_CONFIG,
+} from "../../lib/chartColors"
+import type { ColorConfig } from "../../lib/chartColors"
 
 interface Column {
   name: string
@@ -48,6 +53,9 @@ const DEFAULT_AXIS: AxisConfig = {
 
 const RAW_ROW_CHARTS = new Set(["scatter", "histogram", "boxplot", "heatmap"])
 
+// chart types where per-value or per-threshold coloring is meaningful
+const COLORABLE_CHART_TYPES = new Set(["bar", "line", "scatter", "boxplot"])
+
 export default function ChartBuilder({ columns, preview, fileId }: Props) {
   const [chartType, setChartType] = useState("bar")
   const [groupBy, setGroupBy]     = useState(columns[0]?.name ?? "")
@@ -61,9 +69,27 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
   const [axisConfig, setAxisConfig] = useState<AxisConfig>(DEFAULT_AXIS)
+  const [colorConfig, setColorConfig] = useState<ColorConfig>(DEFAULT_COLOR_CONFIG)
 
   const numericColumns = columns.filter(c => c.type.includes("int") || c.type.includes("float"))
+  const categoricalColumns = useMemo(
+    () => columns.filter(c => !c.type.includes("int") && !c.type.includes("float")).map(c => c.name),
+    [columns]
+  )
   const isMultiValueChart = chartType === "bar" || chartType === "line" || chartType === "scatter"
+  const isColorable = COLORABLE_CHART_TYPES.has(chartType)
+
+  // pull distinct values for a categorical column, capped so the legend stays usable
+  function getUniqueValues(column: string): string[] {
+    const seen = new Set<string>()
+    for (const row of preview) {
+      const v = row[column]
+      if (v === undefined || v === null) continue
+      seen.add(String(v))
+      if (seen.size >= 12) break
+    }
+    return Array.from(seen)
+  }
 
   // reset chart config when the underlying dataset changes (e.g. user switches files)
   useEffect(() => {
@@ -73,6 +99,7 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
     setChartData([])
     setLineData([])
     setError(null)
+    setColorConfig(DEFAULT_COLOR_CONFIG)
   }, [columns])
 
   // bar chart aggregation
@@ -143,46 +170,64 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
     }
   }, [chartType])
 
+  // colorBy only makes sense for categorical columns, and only for colorable chart types;
+  // clear it when it stops applying so stale state doesn't leak into a new chart type
+  useEffect(() => {
+    if (!isColorable && colorConfig.colorBy) {
+      setColorConfig(prev => ({ ...prev, colorBy: "" }))
+    }
+  }, [isColorable, colorConfig.colorBy])
+
   function renderChart() {
     switch (chartType) {
       case "bar":
-        return chartData.length > 0
-          ? (
-            <BarChartView
+        if (chartData.length === 0) return <EmptyState text="Pick a group and at least one column to plot." />
+        {
+          const C: any = BarChartView
+          return (
+            <C
               data={chartData}
               xLabel={groupBy}
               yLabels={yColumns}
               xIsNumeric={typeof chartData[0]?.x === "number"}
               axisConfig={axisConfig}
               allRows={preview}
+              colorConfig={colorConfig}
             />
           )
-          : <EmptyState text="Pick a group and at least one column to plot." />
+        }
 
       case "line":
-        return lineData.length > 0
-          ? (
-            <LineChartView
+        if (lineData.length === 0) return <EmptyState text="Pick a group and at least one column to plot." />
+        {
+          const C: any = LineChartView
+          return (
+            <C
               data={lineData}
               xLabel={groupBy}
               yLabels={yColumns}
               axisConfig={axisConfig}
+              colorConfig={colorConfig}
             />
           )
-          : <EmptyState text="Pick a group and at least one column to plot." />
+        }
 
       case "scatter":
         if (yColumns.length === 0 || !groupBy) {
           return <EmptyState text="Pick an X axis and at least one Y column." />
         }
-        return (
-          <ScatterChartView
-            allRows={preview}
-            xLabel={groupBy}
-            yLabels={yColumns}
-            axisConfig={axisConfig}
-          />
-        )
+        {
+          const C: any = ScatterChartView
+          return (
+            <C
+              allRows={preview}
+              xLabel={groupBy}
+              yLabels={yColumns}
+              axisConfig={axisConfig}
+              colorConfig={colorConfig}
+            />
+          )
+        }
 
       case "histogram":
         if (!yColumns[0]) {
@@ -200,14 +245,18 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
         if (!yColumns[0] || !groupBy) {
           return <EmptyState text="Pick a group and a numeric column." />
         }
-        return (
-          <BoxPlotChartView
-            allRows={preview}
-            groupBy={groupBy}
-            valueCol={yColumns[0]}
-            axisConfig={axisConfig}
-          />
-        )
+        {
+          const C: any = BoxPlotChartView
+          return (
+            <C
+              allRows={preview}
+              groupBy={groupBy}
+              valueCol={yColumns[0]}
+              axisConfig={axisConfig}
+              colorConfig={colorConfig}
+            />
+          )
+        }
 
       case "heatmap":
         if (!yColumns[0] || !groupBy || !heatmapColBy) {
@@ -252,7 +301,7 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
           ))}
         </div>
 
-        {/* Right side: config + chart + options */}
+        {/* Middle: config + chart + options */}
         <div className="flex-1 min-w-0">
           {/* Config bar — contextual per chart type */}
           <div className="flex flex-wrap items-end gap-4 pb-3.5 mb-3.5" style={{ borderBottom: `1px solid ${FIELD_BORDER}` }}>
@@ -365,6 +414,18 @@ export default function ChartBuilder({ columns, preview, fileId }: Props) {
               />
             </div>
           </div>
+        </div>
+
+        {/* Right rail: color-by panel */}
+        <div className="shrink-0 w-40 pl-4" style={{ borderLeft: `1px solid ${FIELD_BORDER}` }}>
+          <ChartColor
+            colorable={isColorable}
+            chartLabel={CHART_TYPES.find(ct => ct.value === chartType)?.label ?? ""}
+            categoricalColumns={categoricalColumns}
+            getUniqueValues={getUniqueValues}
+            config={colorConfig}
+            onChange={setColorConfig}
+          />
         </div>
       </div>
     </div>

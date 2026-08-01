@@ -54,7 +54,7 @@ export default function PreviewPage() {
         borderBottom: "0.5px solid #dce8f0", background: "#F7F4F3", flexShrink: 0,
       }}>
         <button
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/upload")}
           style={{ fontSize: 12, color: "#5F7B94", background: "none", border: "none", cursor: "pointer" }}
         >
           ← Back to upload

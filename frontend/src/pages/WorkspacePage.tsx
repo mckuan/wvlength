@@ -97,7 +97,7 @@ export default function WorkspacePage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold" style={{ color: TEXT_STRONG }}>Workspace</h1>
         <button
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/upload")}
           className="text-xs rounded-lg px-3 py-1.5"
           style={{ color: "#fff", background: ACCENT, border: "none", cursor: "pointer" }}
         >

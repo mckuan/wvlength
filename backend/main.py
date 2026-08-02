@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import uploads, transforms, graph, projects
+from routers import uploads, transforms, graph, projects, auth
+from database import engine, Base
+import models  # noqa: F401 — ensures User model is registered before create_all
 
 app = FastAPI(title="WVLENGTH API")
 
+Base.metadata.create_all(bind=engine)
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,6 +20,7 @@ app.include_router(uploads.router)
 app.include_router(transforms.router)
 app.include_router(graph.router)
 app.include_router(projects.router)
+app.include_router(auth.router)
 
 @app.get("/")
 def root():

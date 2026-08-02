@@ -1,50 +1,85 @@
-export default function SignUpPage() {
-    return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-            <h1 className="text-3xl font-bold mb-6">Sign Up</h1>
-            <form className="bg-white p-8 rounded shadow-md w-full max-w-sm">
-                <div className="mb-4">
-                    <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="username">
-                        Username
-                    </label>
-                    <input
-                        id="username"
-                        type="text"
-                        placeholder="Enter your username"
-                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                    />
-                </div>
-                <div className="mb-4">
-                    <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="email">
-                        Email
-                    </label>
-                    <input
-                        id="email"
-                        type="email"
-                        placeholder="Enter your email"
-                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                    />
-                </div>
-                <div className="mb-6">
-                    <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
-                        Password
-                    </label>
-                    <input
-                        id="password"
-                        type="password"
-                        placeholder="Enter your password"
-                        className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                    />
-                </div>
-                <div className="flex items-center justify-between">
-                    <button
-                        type="submit"
-                        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-                    >
-                        Sign Up
-                    </button>
-                </div>
-            </form>
-        </div>
-    )
+import { useState } from "react"
+import type { FormEvent } from "react"
+import { useNavigate, Link } from "react-router-dom"
+import { useAuth } from "../context/AuthContext"
+
+const PANEL_BG     = "#F7F4F3"
+const FIELD_BORDER = "#E8EFF4"
+const FIELD_BG     = "#FFFFFF"
+const TEXT_MUTED   = "#5F7B94"
+const TEXT_STRONG  = "#324E66"
+const ACCENT       = "#5F7B94"
+
+export default function SignInPage() {
+  const { login } = useAuth()
+  const navigate = useNavigate()
+  const [email, setEmail]       = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError]       = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setSubmitting(true)
+    try {
+      await login(email, password)
+      navigate("/workspace")
+    } catch (err: any) {
+      setError(err.response?.data?.detail ?? "Sign in failed — check your email and password.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="w-full min-h-screen flex items-center justify-center" style={{ background: PANEL_BG }}>
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-sm rounded-xl p-8"
+        style={{ background: "#fff", border: `1px solid ${FIELD_BORDER}` }}
+      >
+        <h1 className="text-lg font-semibold mb-1" style={{ color: TEXT_STRONG }}>Sign in</h1>
+        <p className="text-xs mb-6" style={{ color: TEXT_MUTED }}>Welcome back to WVLENGTH.</p>
+
+        <label className="block text-xs mb-1.5" style={{ color: TEXT_MUTED }}>Email</label>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          className="w-full rounded-md px-3 py-2 text-sm mb-4"
+          style={{ border: `1px solid ${FIELD_BORDER}`, background: FIELD_BG }}
+        />
+
+        <label className="block text-xs mb-1.5" style={{ color: TEXT_MUTED }}>Password</label>
+        <input
+          type="password"
+          required
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          className="w-full rounded-md px-3 py-2 text-sm mb-4"
+          style={{ border: `1px solid ${FIELD_BORDER}`, background: FIELD_BG }}
+        />
+
+        {error && (
+          <p className="text-xs mb-4" style={{ color: "#C24444" }}>{error}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={submitting}
+          className="w-full text-sm rounded-md py-2 mb-4"
+          style={{ color: "#fff", background: ACCENT, border: "none", cursor: "pointer", opacity: submitting ? 0.6 : 1 }}
+        >
+          {submitting ? "Signing in…" : "Sign in"}
+        </button>
+
+        <p className="text-xs text-center" style={{ color: TEXT_MUTED }}>
+          Don't have an account?{" "}
+          <Link to="/sign-up" style={{ color: ACCENT }}>Sign up</Link>
+        </p>
+      </form>
+    </div>
+  )
 }

@@ -6,13 +6,15 @@ import { api } from "../lib/api"
 interface User {
   id: number
   email: string
+  first_name: string
+  last_name: string
 }
 
 interface AuthContextValue {
   user: User | null
   loading: boolean
   login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string) => Promise<void>
+  register: (email: string, password: string, firstName: string, lastName: string) => Promise<void>
   logout: () => void
 }
 
@@ -41,8 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(me.data)
   }
 
-  async function register(email: string, password: string) {
-    const res = await api.post("/auth/register", { email, password })
+  async function register(email: string, password: string, firstName: string, lastName: string) {
+    const res = await api.post("/auth/register", {
+      email,
+      password,
+      first_name: firstName,
+      last_name: lastName,
+    })
     localStorage.setItem("wvlength_token", res.data.access_token)
     const me = await api.get("/auth/me")
     setUser(me.data)

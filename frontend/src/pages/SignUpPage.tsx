@@ -13,6 +13,8 @@ const ACCENT       = "#5F7B94"
 export default function SignUpPage() {
   const { register } = useAuth()
   const navigate = useNavigate()
+  const [firstName, setFirstName] = useState("")
+  const [lastName, setLastName]   = useState("")
   const [email, setEmail]       = useState("")
   const [password, setPassword] = useState("")
   const [error, setError]       = useState<string | null>(null)
@@ -29,7 +31,7 @@ export default function SignUpPage() {
 
     setSubmitting(true)
     try {
-      await register(email, password)
+      await register(email, password, firstName, lastName)
       navigate("/workspace")
     } catch (err: any) {
       setError(err.response?.data?.detail ?? "Sign up failed — try again.")
@@ -47,6 +49,31 @@ export default function SignUpPage() {
       >
         <h1 className="text-lg font-semibold mb-1" style={{ color: TEXT_STRONG }}>Create an account</h1>
         <p className="text-xs mb-6" style={{ color: TEXT_MUTED }}>Save charts to your workspace.</p>
+
+        <div className="flex gap-3 mb-4">
+          <div className="flex-1">
+            <label className="block text-xs mb-1.5" style={{ color: TEXT_MUTED }}>First name</label>
+            <input
+              type="text"
+              required
+              value={firstName}
+              onChange={e => setFirstName(e.target.value)}
+              className="w-full rounded-md px-3 py-2 text-sm"
+              style={{ border: `1px solid ${FIELD_BORDER}`, background: FIELD_BG }}
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block text-xs mb-1.5" style={{ color: TEXT_MUTED }}>Last name</label>
+            <input
+              type="text"
+              required
+              value={lastName}
+              onChange={e => setLastName(e.target.value)}
+              className="w-full rounded-md px-3 py-2 text-sm"
+              style={{ border: `1px solid ${FIELD_BORDER}`, background: FIELD_BG }}
+            />
+          </div>
+        </div>
 
         <label className="block text-xs mb-1.5" style={{ color: TEXT_MUTED }}>Email</label>
         <input

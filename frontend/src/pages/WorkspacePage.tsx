@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import axios from "axios"
+import { api } from "../lib/api"
+import { useAuth } from "../context/AuthContext"
 import ChartTypeIcon from "../components/ChartPage/ChartTypeIcon"
 
 interface ChartConfig {
@@ -14,7 +15,7 @@ interface ChartConfig {
 }
 
 interface Project {
-  project_id: string
+  id: number
   name: string
   file_id: string
   filename: string
@@ -31,6 +32,7 @@ const ACCENT       = "#5F7B94"
 
 export default function WorkspacePage() {
   const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
@@ -43,7 +45,7 @@ export default function WorkspacePage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await axios.get("http://localhost:8000/projects/")
+      const res = await api.get("/projects/")
       setProjects(res.data.projects)
     } catch {
       setError("Couldn't load projects — check your backend is running.")
@@ -52,12 +54,12 @@ export default function WorkspacePage() {
     }
   }
 
-  async function handleDelete(e: React.MouseEvent, projectId: string) {
+  async function handleDelete(e: React.MouseEvent, projectId: number) {
     e.stopPropagation()
     if (!window.confirm("Delete this project?")) return
     try {
-      await axios.delete(`http://localhost:8000/projects/${projectId}`)
-      setProjects(prev => prev.filter(p => p.project_id !== projectId))
+      await api.delete(`/projects/${projectId}`)
+      setProjects(prev => prev.filter(p => p.id !== projectId))
     } catch {
       window.alert("Failed to delete project.")
     }
@@ -65,7 +67,7 @@ export default function WorkspacePage() {
 
   async function handleOpen(project: Project) {
     try {
-      const res = await axios.get(`http://localhost:8000/upload/files/${project.file_id}/preview`)
+      const res = await api.get(`/upload/files/${project.file_id}/preview`)
       navigate("/chart", {
         state: {
           dataset: {
@@ -75,15 +77,17 @@ export default function WorkspacePage() {
             columns:  res.data.columns,
             preview:  res.data.preview,
           },
-          // ChartBuilder reads this as `initialConfig`, seeding its initial
-          // state so opening a saved project restores its exact chart type,
-          // axes, and colors instead of defaulting to a plain bar chart
           initialChartConfig: project.chart_config,
         },
       })
     } catch {
       window.alert("The dataset behind this project may have been deleted.")
     }
+  }
+
+  function handleLogout() {
+    logout()
+    navigate("/")
   }
 
   function formatDate(ts: number): string {
@@ -95,14 +99,30 @@ export default function WorkspacePage() {
   return (
     <div className="w-full min-h-screen px-8 py-8" style={{ background: PANEL_BG }}>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: TEXT_STRONG }}>Workspace</h1>
-        <button
-          onClick={() => navigate("/upload")}
-          className="text-xs rounded-lg px-3 py-1.5"
-          style={{ color: "#fff", background: ACCENT, border: "none", cursor: "pointer" }}
-        >
-          + New upload
-        </button>
+        <div>
+          <h1 className="text-xl font-semibold" style={{ color: TEXT_STRONG }}>Workspace</h1>
+          {user && (
+            <p className="text-xs mt-1" style={{ color: TEXT_MUTED }}>
+              Welcome, {user.first_name}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("/upload")}
+            className="text-xs rounded-lg px-3 py-1.5"
+            style={{ color: "#fff", background: ACCENT, border: "none", cursor: "pointer" }}
+          >
+            + New upload
+          </button>
+          <button
+            onClick={handleLogout}
+            className="text-xs rounded-lg px-3 py-1.5"
+            style={{ color: TEXT_MUTED, background: "#fff", border: `1px solid ${FIELD_BORDER}`, cursor: "pointer" }}
+          >
+            Log out
+          </button>
+        </div>
       </div>
 
       {loading && (
@@ -132,7 +152,7 @@ export default function WorkspacePage() {
         >
           {projects.map(project => (
             <div
-              key={project.project_id}
+              key={project.id}
               onClick={() => handleOpen(project)}
               className="rounded-xl overflow-hidden cursor-pointer"
               style={{ background: "#fff", border: `1px solid ${FIELD_BORDER}` }}
@@ -153,7 +173,7 @@ export default function WorkspacePage() {
                     {project.name}
                   </p>
                   <button
-                    onClick={e => handleDelete(e, project.project_id)}
+                    onClick={e => handleDelete(e, project.id)}
                     aria-label="Delete project"
                     className="text-xs shrink-0"
                     style={{ color: TEXT_MUTED, background: "none", border: "none", cursor: "pointer" }}

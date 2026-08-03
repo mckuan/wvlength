@@ -17,8 +17,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
 
 class RegisterRequest(BaseModel):
-    email:    EmailStr
-    password: str
+    email:      EmailStr
+    password:   str
+    first_name: str
+    last_name:  str
 
 
 class LoginRequest(BaseModel):
@@ -32,8 +34,10 @@ class TokenResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id:    int
-    email: str
+    id:         int
+    email:      str
+    first_name: str
+    last_name:  str
 
 
 def get_current_user(
@@ -65,7 +69,12 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="An account with this email already exists")
 
-    user = User(email=req.email, hashed_password=hash_password(req.password))
+    user = User(
+        email=req.email,
+        hashed_password=hash_password(req.password),
+        first_name=req.first_name,
+        last_name=req.last_name,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -86,4 +95,9 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
-    return UserResponse(id=current_user.id, email=current_user.email)
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        first_name=current_user.first_name,
+        last_name=current_user.last_name,
+    )

@@ -1,28 +1,16 @@
-# projects.py
-from fastapi import APIRouter, HTTPException
+# routers/projects.py
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 from pydantic import BaseModel
-import os
-import json
-import hashlib
+from sqlalchemy.orm import Session
 import time
 
+from database import get_db
+from models import Project, User
+from routers.auth import get_current_user
 from routers.uploads import load_meta
 
 router = APIRouter(prefix="/projects", tags=["projects"])
-
-STORAGE_DIR = os.path.join(os.path.dirname(__file__), ".projects_store")
-os.makedirs(STORAGE_DIR, exist_ok=True)
-
-
-def _project_id(name: str) -> str:
-    ts = str(time.time())
-    raw = f"{name}:{ts}"
-    return hashlib.md5(raw.encode()).hexdigest()[:12]
-
-
-def _project_path(project_id: str) -> str:
-    return os.path.join(STORAGE_DIR, f"{project_id}.json")
 
 
 class ChartConfig(BaseModel):
@@ -45,19 +33,6 @@ class RenameProjectRequest(BaseModel):
     name: str
 
 
-def _write_project(record: dict) -> None:
-    with open(_project_path(record["project_id"]), "w") as f:
-        json.dump(record, f)
-
-
-def _read_project(project_id: str) -> dict:
-    path = _project_path(project_id)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
-    with open(path) as f:
-        return json.load(f)
-
-
 def _lookup_filename(file_id: str) -> str:
     # confirms the source dataset still exists so a project can't silently
     # point at deleted data, and grabs its filename for display
@@ -71,69 +46,106 @@ def _lookup_filename(file_id: str) -> str:
     return meta["filename"]
 
 
+def _get_owned_project(project_id: int, current_user: User, db: Session) -> Project:
+    # scoping by user_id here is what makes this "your" project and not
+    # just any project — a user can never fetch/edit/delete another
+    # user's project, even if they guess a valid project_id
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == current_user.id)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+    return project
+
+
 @router.post("/")
-def save_project(req: SaveProjectRequest):
+def save_project(
+    req: SaveProjectRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     filename = _lookup_filename(req.file_id)
-    project_id = _project_id(req.name)
     now = time.time()
-    record = {
-        "project_id":   project_id,
-        "name":         req.name,
-        "file_id":      req.file_id,
-        "filename":     filename,
-        "chart_config": req.chart_config.dict(),
-        "created_at":   now,
-        "updated_at":   now,
-    }
-    _write_project(record)
-    return record
+    project = Project(
+        user_id=current_user.id,
+        name=req.name,
+        file_id=req.file_id,
+        filename=filename,
+        chart_config=req.chart_config.dict(),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    return project
 
 
 @router.get("/")
-def list_projects():
-    projects = []
-    for name in os.listdir(STORAGE_DIR):
-        if name.endswith(".json"):
-            with open(os.path.join(STORAGE_DIR, name)) as f:
-                projects.append(json.load(f))
-    projects.sort(key=lambda p: p.get("updated_at", 0), reverse=True)
+def list_projects(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    projects = (
+        db.query(Project)
+        .filter(Project.user_id == current_user.id)
+        .order_by(Project.updated_at.desc())
+        .all()
+    )
     return {"projects": projects}
 
 
 @router.get("/{project_id}")
-def get_project(project_id: str):
-    return _read_project(project_id)
+def get_project(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _get_owned_project(project_id, current_user, db)
 
 
 @router.put("/{project_id}")
-def update_project(project_id: str, req: SaveProjectRequest):
-    existing = _read_project(project_id)
-    filename = _lookup_filename(req.file_id)
-    record = {
-        **existing,
-        "name":         req.name,
-        "file_id":      req.file_id,
-        "filename":     filename,
-        "chart_config": req.chart_config.dict(),
-        "updated_at":   time.time(),
-    }
-    _write_project(record)
-    return record
+def update_project(
+    project_id: int,
+    req: SaveProjectRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_owned_project(project_id, current_user, db)
+    project.name = req.name
+    project.file_id = req.file_id
+    project.filename = _lookup_filename(req.file_id)
+    project.chart_config = req.chart_config.dict()
+    project.updated_at = time.time()
+    db.commit()
+    db.refresh(project)
+    return project
 
 
 @router.patch("/{project_id}/rename")
-def rename_project(project_id: str, req: RenameProjectRequest):
-    existing = _read_project(project_id)
-    existing["name"] = req.name
-    existing["updated_at"] = time.time()
-    _write_project(existing)
-    return existing
+def rename_project(
+    project_id: int,
+    req: RenameProjectRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_owned_project(project_id, current_user, db)
+    project.name = req.name
+    project.updated_at = time.time()
+    db.commit()
+    db.refresh(project)
+    return project
 
 
 @router.delete("/{project_id}")
-def delete_project(project_id: str):
-    path = _project_path(project_id)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
-    os.remove(path)
+def delete_project(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_owned_project(project_id, current_user, db)
+    db.delete(project)
+    db.commit()
     return {"deleted": project_id}

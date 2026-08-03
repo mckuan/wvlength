@@ -109,11 +109,11 @@ export default function WorkspacePage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => navigate("/upload")}
+            onClick={() => navigate("/project")}
             className="text-xs rounded-lg px-3 py-1.5"
             style={{ color: "#fff", background: ACCENT, border: "none", cursor: "pointer" }}
           >
-            + New upload
+            + New project
           </button>
           <button
             onClick={handleLogout}

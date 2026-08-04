@@ -103,7 +103,8 @@ export default function ProjectPage() {
 
   function handleAddPastGraph(index: number) {
     // TODO: open a picker over GET /projects/graphs and set source_project_id
-    // + copy file_id/chart_config onto the resulting block once one is chosen.
+    // + source_block_id on the resulting block once one is chosen, pointing
+    // at the same stored image/stats instead of capturing a new one.
     insertAt(index, makeGraphBlock())
   }
 

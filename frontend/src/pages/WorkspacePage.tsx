@@ -24,7 +24,7 @@ const ACCENT       = "#5F7B94"
 // not "the" chart for the project
 function firstConfiguredGraph(project: Project): GraphBlockData | undefined {
   return project.blocks.find(
-    (b): b is GraphBlockData => b.type === "graph" && Boolean(b.chart_config)
+    (b): b is GraphBlockData => b.type === "graph" && Boolean(b.image_url)
   )
 }
 
@@ -152,8 +152,8 @@ export default function WorkspacePage() {
                   className="flex items-center justify-center"
                   style={{ height: 120, background: PANEL_BG, borderBottom: `1px solid ${FIELD_BORDER}` }}
                 >
-                  {previewGraph?.chart_config ? (
-                    <ChartTypeIcon type={previewGraph.chart_config.chart_type} className="w-10 h-10" />
+                  {previewGraph?.chart_type ? (
+                    <ChartTypeIcon type={previewGraph.chart_type} className="w-10 h-10" />
                   ) : (
                     <span className="text-xs" style={{ color: TEXT_MUTED }}>
                       {project.blocks.length === 0 ? "Empty" : "No graphs yet"}

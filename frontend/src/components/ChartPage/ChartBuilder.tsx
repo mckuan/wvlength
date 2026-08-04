@@ -52,6 +52,7 @@ interface Props {
 export interface ChartBuilderHandle {
   exportChart: () => void
   getSnapshot: () => ChartConfigSnapshot
+  getChartNode: () => HTMLDivElement | null
 }
 
 const CHART_TYPES = [
@@ -105,6 +106,7 @@ const ChartBuilder = forwardRef<ChartBuilderHandle, Props>(function ChartBuilder
   const [colorConfig, setColorConfig] = useState<ColorConfig>(
     initialConfig?.color_config ?? DEFAULT_COLOR_CONFIG
   )
+  const chartNodeRef = useRef<HTMLDivElement>(null)
 
   const numericColumns = columns.filter(c => c.type.includes("int") || c.type.includes("float"))
   const categoricalColumns = useMemo(
@@ -242,6 +244,7 @@ const ChartBuilder = forwardRef<ChartBuilderHandle, Props>(function ChartBuilder
   useImperativeHandle(ref, () => ({
     exportChart: handleExportChart,
     getSnapshot,
+    getChartNode: () => chartNodeRef.current,
   }))
 
   function renderChart() {
@@ -442,6 +445,7 @@ const ChartBuilder = forwardRef<ChartBuilderHandle, Props>(function ChartBuilder
 
           {/* Chart canvas — sizes to content instead of a fixed centered box, avoids overlap */}
           <div
+            ref={chartNodeRef}
             className="rounded-lg mb-6"
             style={{ border: `1px dashed ${CANVAS_BORDER}`, background: "#fff" }}
           >

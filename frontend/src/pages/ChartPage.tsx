@@ -1,9 +1,10 @@
 import { useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
+import { toBlob } from "html-to-image"
 import { api } from "../lib/api"
 import ChartBuilder from "../components/ChartPage/ChartBuilder"
 import type { ChartBuilderHandle } from "../components/ChartPage/ChartBuilder"
-import type { Block } from "../types/Block"
+import type { Block, ColumnStats } from "../types/Block"
 
 export default function ChartPage() {
   const location = useLocation()
@@ -22,24 +23,56 @@ export default function ChartPage() {
     return null
   }
 
+  // captures the rendered chart as a PNG blob and fetches summary stats for
+  // whichever numeric columns are on the y-axis — the two pieces every
+  // saved graph block needs, regardless of whether it's a new project or
+  // an existing block being filled in
+  async function captureSnapshot() {
+    const node = chartBuilderRef.current?.getChartNode()
+    const snapshot = chartBuilderRef.current?.getSnapshot()
+    if (!node || !snapshot) throw new Error("Chart not ready")
+
+    const blob = await toBlob(node, { backgroundColor: "#ffffff", pixelRatio: 2 })
+    if (!blob) throw new Error("Could not capture chart image")
+
+    let stats: Record<string, ColumnStats> = {}
+    if (dataset.file_id && snapshot.y_columns.length > 0) {
+      const { data } = await api.post("/graph/summary", {
+        file_id: dataset.file_id,
+        columns: snapshot.y_columns,
+      })
+      stats = data.summary
+    }
+
+    return { blob, chartType: snapshot.chart_type, stats }
+  }
+
   async function handleSaveToBlock() {
-    if (!chartBuilderRef.current || !projectId || !blockId) return
+    if (!projectId || !blockId) return
     setSaving(true)
     setSaveError(null)
     try {
-      // read-modify-write: fetch the project's current blocks, swap in the
-      // updated graph block by id, PATCH the whole array back. Simpler than
-      // a dedicated single-block endpoint and avoids the frontend needing
-      // to track the rest of the doc while off on the chart page.
-      const { data: project } = await api.get(`/projects/${projectId}`)
-      const snapshot = chartBuilderRef.current.getSnapshot()
+      const { blob, chartType, stats } = await captureSnapshot()
+
+      const formData = new FormData()
+      formData.append("file", blob, "chart.png")
+      const { data: uploaded } = await api.post(
+        `/projects/${projectId}/blocks/${blockId}/image`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      )
+
       const updatedBlock: Block = {
         id: blockId,
         type: "graph",
-        file_id: dataset.file_id,
-        filename: dataset.filename,
-        chart_config: snapshot,
+        chart_type: chartType,
+        image_url: uploaded.image_url,
+        stats,
       }
+
+      // read-modify-write: fetch the project's current blocks, swap in the
+      // updated graph block by id, PATCH the whole array back
+      const { data: project } = await api.get(`/projects/${projectId}`)
       const existingBlocks: Block[] = project.blocks ?? []
       const found = existingBlocks.some((b: Block) => b.id === blockId)
       const nextBlocks = found
@@ -56,10 +89,6 @@ export default function ChartPage() {
   }
 
   async function handleAddToProject() {
-    if (!chartBuilderRef.current || !dataset?.file_id) {
-      window.alert("This chart isn't attached to a file yet — can't save it.")
-      return
-    }
     // TODO: swap window.prompt for a real "save project" modal
     const name = window.prompt("Name this project:")
     if (!name) return
@@ -67,18 +96,33 @@ export default function ChartPage() {
     setSaving(true)
     setSaveError(null)
     try {
-      const snapshot = chartBuilderRef.current.getSnapshot()
-      const block: Block = {
-        id: crypto.randomUUID(),
-        type: "graph",
-        file_id: dataset.file_id,
-        filename: dataset.filename,
-        chart_config: snapshot,
-      }
+      const { blob, chartType, stats } = await captureSnapshot()
+      const newBlockId = crypto.randomUUID()
+
+      // project needs to exist first so there's a project_id to upload the
+      // image against — create it with an empty-ish placeholder block, then
+      // fill the block in once the image is uploaded
       const { data: project } = await api.post("/projects/", {
         name,
-        blocks: [block],
+        blocks: [{ id: newBlockId, type: "graph" }],
       })
+
+      const formData = new FormData()
+      formData.append("file", blob, "chart.png")
+      const { data: uploaded } = await api.post(
+        `/projects/${project.id}/blocks/${newBlockId}/image`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      )
+
+      const finishedBlock: Block = {
+        id: newBlockId,
+        type: "graph",
+        chart_type: chartType,
+        image_url: uploaded.image_url,
+        stats,
+      }
+      await api.patch(`/projects/${project.id}/blocks`, { blocks: [finishedBlock] })
       navigate(`/project/${project.id}`)
     } catch {
       setSaveError("Failed to save project — check your backend is running.")

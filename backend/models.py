@@ -1,4 +1,3 @@
-# models.py
 import time
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON
 from sqlalchemy.orm import relationship
@@ -21,13 +20,16 @@ class User(Base):
 class Project(Base):
     __tablename__ = "projects"
 
-    id           = Column(Integer, primary_key=True, index=True)
-    user_id      = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    name         = Column(String, nullable=False)
-    file_id      = Column(String, nullable=False)
-    filename     = Column(String, nullable=False)
-    chart_config = Column(JSON, nullable=False)
-    created_at   = Column(Float, default=time.time)
-    updated_at   = Column(Float, default=time.time)
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name       = Column(String, nullable=False)
+    # ordered list of block dicts, e.g.
+    # [{ "id": "...", "type": "text", "content": "..." },
+    #  { "id": "...", "type": "graph", "file_id": "...", "filename": "...", "chart_config": {...} }]
+    # validated against the Block/TextBlock/GraphBlock pydantic models in routers/projects.py
+    # before ever reaching this column — this column itself stays untyped JSON.
+    blocks     = Column(JSON, nullable=False, default=list)
+    created_at = Column(Float, default=time.time)
+    updated_at = Column(Float, default=time.time)
 
     owner = relationship("User", back_populates="projects")

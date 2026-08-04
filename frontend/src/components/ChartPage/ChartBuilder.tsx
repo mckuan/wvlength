@@ -1,6 +1,5 @@
 //parent of ChartOptions and individual chart views, manages/renders state for both
 import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from "react"
-import axios from "axios"
 import BarChartView from "../charts/BarChartView"
 import LineChartView from "../charts/LineChartView"
 import BoxPlotChartView from "../charts/BoxPlotChartView"
@@ -45,11 +44,14 @@ interface Props {
 }
 
 // exposed to the parent page via ref, so header buttons living outside
-// ChartBuilder (e.g. in ChartPage) can trigger export / add-to-project
-// without ChartBuilder's internal state needing to be lifted up
+// ChartBuilder (e.g. in ChartPage) can trigger export / read the current
+// config without ChartBuilder's internal state needing to be lifted up.
+// ChartBuilder deliberately doesn't know about projects or blocks — it just
+// reports its current config; the parent page decides what to do with it
+// (create a new project, or PATCH it into an existing block).
 export interface ChartBuilderHandle {
   exportChart: () => void
-  addToProject: () => void
+  getSnapshot: () => ChartConfigSnapshot
 }
 
 const CHART_TYPES = [
@@ -219,44 +221,27 @@ const ChartBuilder = forwardRef<ChartBuilderHandle, Props>(function ChartBuilder
   }, [isColorable, colorConfig.colorBy])
 
   function handleExportChart() {
-    // TODO: wire up actual export — e.g. rendering the chart canvas to PNG/SVG,
-    // or POSTing { chartType, groupBy, yColumns, axisConfig, colorConfig } to a
-    // backend export endpoint and downloading the result
+    // TODO: wire up actual image export — e.g. rendering the chart canvas to
+    // PNG/SVG for download. Separate from "save to project" below, which
+    // persists the config (not an image) so the chart stays editable.
     console.log("export chart", { chartType, groupBy, yColumns, axisConfig, colorConfig })
   }
 
-  async function handleAddToProject() {
-    if (!fileId) {
-      window.alert("This chart isn't attached to a file yet — can't save it.")
-      return
-    }
-    // TODO: swap window.prompt for a real "save project" modal
-    const name = window.prompt("Name this project:")
-    if (!name) return
-
-    try {
-      await axios.post("http://localhost:8000/projects/", {
-        name,
-        file_id: fileId,
-        chart_config: {
-          chart_type: chartType,
-          group_by: groupBy,
-          heatmap_col_by: heatmapColBy,
-          aggregation,
-          y_columns: yColumns,
-          axis_config: axisConfig,
-          color_config: colorConfig,
-        },
-      })
-      window.alert("Saved to workspace.")
-    } catch {
-      window.alert("Failed to save project — check your backend is running.")
+  function getSnapshot(): ChartConfigSnapshot {
+    return {
+      chart_type: chartType,
+      group_by: groupBy,
+      heatmap_col_by: heatmapColBy,
+      aggregation,
+      y_columns: yColumns,
+      axis_config: axisConfig,
+      color_config: colorConfig,
     }
   }
 
   useImperativeHandle(ref, () => ({
     exportChart: handleExportChart,
-    addToProject: handleAddToProject,
+    getSnapshot,
   }))
 
   function renderChart() {

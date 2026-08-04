@@ -3,23 +3,12 @@ import { useNavigate } from "react-router-dom"
 import { api } from "../lib/api"
 import { useAuth } from "../context/AuthContext"
 import ChartTypeIcon from "../components/ChartPage/ChartTypeIcon"
-
-interface ChartConfig {
-  chart_type: string
-  group_by?: string
-  heatmap_col_by?: string
-  aggregation?: string
-  y_columns: string[]
-  axis_config: Record<string, string>
-  color_config: Record<string, unknown>
-}
+import type { Block, GraphBlockData } from "../types/Block"
 
 interface Project {
   id: number
   name: string
-  file_id: string
-  filename: string
-  chart_config: ChartConfig
+  blocks: Block[]
   created_at: number
   updated_at: number
 }
@@ -29,6 +18,19 @@ const FIELD_BORDER = "#E8EFF4"
 const TEXT_MUTED   = "#5F7B94"
 const TEXT_STRONG  = "#324E66"
 const ACCENT       = "#5F7B94"
+
+// the card thumbnail shows the first configured graph block, since a
+// project can now hold several — this is just a representative preview,
+// not "the" chart for the project
+function firstConfiguredGraph(project: Project): GraphBlockData | undefined {
+  return project.blocks.find(
+    (b): b is GraphBlockData => b.type === "graph" && Boolean(b.chart_config)
+  )
+}
+
+function graphBlockCount(project: Project): number {
+  return project.blocks.filter(b => b.type === "graph").length
+}
 
 export default function WorkspacePage() {
   const navigate = useNavigate()
@@ -65,24 +67,10 @@ export default function WorkspacePage() {
     }
   }
 
-  async function handleOpen(project: Project) {
-    try {
-      const res = await api.get(`/upload/files/${project.file_id}/preview`)
-      navigate("/chart", {
-        state: {
-          dataset: {
-            file_id:  res.data.file_id,
-            filename: res.data.filename,
-            rows:     res.data.rows,
-            columns:  res.data.columns,
-            preview:  res.data.preview,
-          },
-          initialChartConfig: project.chart_config,
-        },
-      })
-    } catch {
-      window.alert("The dataset behind this project may have been deleted.")
-    }
+  function handleOpen(project: Project) {
+    // a project is a multi-block doc now, not a single chart — open the
+    // doc editor and let the user click into whichever block they want
+    navigate(`/project/${project.id}`)
   }
 
   function handleLogout() {
@@ -109,7 +97,7 @@ export default function WorkspacePage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => navigate("/project")}
+            onClick={() => navigate("/project/new")}
             className="text-xs rounded-lg px-3 py-1.5"
             style={{ color: "#fff", background: ACCENT, border: "none", cursor: "pointer" }}
           >
@@ -140,7 +128,7 @@ export default function WorkspacePage() {
         >
           <p className="text-sm mb-1" style={{ color: TEXT_STRONG }}>No saved projects yet</p>
           <p className="text-xs" style={{ color: TEXT_MUTED }}>
-            Build a chart and click "Add to project" to save it here.
+            Click "+ New project" to start a doc and add your first graph.
           </p>
         </div>
       )}
@@ -150,46 +138,56 @@ export default function WorkspacePage() {
           className="grid gap-4"
           style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
         >
-          {projects.map(project => (
-            <div
-              key={project.id}
-              onClick={() => handleOpen(project)}
-              className="rounded-xl overflow-hidden cursor-pointer"
-              style={{ background: "#fff", border: `1px solid ${FIELD_BORDER}` }}
-            >
+          {projects.map(project => {
+            const previewGraph = firstConfiguredGraph(project)
+            const graphCount = graphBlockCount(project)
+            return (
               <div
-                className="flex items-center justify-center"
-                style={{ height: 120, background: PANEL_BG, borderBottom: `1px solid ${FIELD_BORDER}` }}
+                key={project.id}
+                onClick={() => handleOpen(project)}
+                className="rounded-xl overflow-hidden cursor-pointer"
+                style={{ background: "#fff", border: `1px solid ${FIELD_BORDER}` }}
               >
-                <ChartTypeIcon type={project.chart_config.chart_type} className="w-10 h-10" />
-              </div>
-              <div className="p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p
-                    className="text-sm font-medium truncate"
-                    style={{ color: TEXT_STRONG }}
-                    title={project.name}
-                  >
-                    {project.name}
-                  </p>
-                  <button
-                    onClick={e => handleDelete(e, project.id)}
-                    aria-label="Delete project"
-                    className="text-xs shrink-0"
-                    style={{ color: TEXT_MUTED, background: "none", border: "none", cursor: "pointer" }}
-                  >
-                    ×
-                  </button>
+                <div
+                  className="flex items-center justify-center"
+                  style={{ height: 120, background: PANEL_BG, borderBottom: `1px solid ${FIELD_BORDER}` }}
+                >
+                  {previewGraph?.chart_config ? (
+                    <ChartTypeIcon type={previewGraph.chart_config.chart_type} className="w-10 h-10" />
+                  ) : (
+                    <span className="text-xs" style={{ color: TEXT_MUTED }}>
+                      {project.blocks.length === 0 ? "Empty" : "No graphs yet"}
+                    </span>
+                  )}
                 </div>
-                <p className="text-xs mt-1 truncate" style={{ color: TEXT_MUTED }}>
-                  {project.filename}
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: TEXT_MUTED }}>
-                  Updated {formatDate(project.updated_at)}
-                </p>
+                <div className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <p
+                      className="text-sm font-medium truncate"
+                      style={{ color: TEXT_STRONG }}
+                      title={project.name}
+                    >
+                      {project.name}
+                    </p>
+                    <button
+                      onClick={e => handleDelete(e, project.id)}
+                      aria-label="Delete project"
+                      className="text-xs shrink-0"
+                      style={{ color: TEXT_MUTED, background: "none", border: "none", cursor: "pointer" }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <p className="text-xs mt-1 truncate" style={{ color: TEXT_MUTED }}>
+                    {graphCount === 0 ? "No graphs" : `${graphCount} graph${graphCount !== 1 ? "s" : ""}`}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: TEXT_MUTED }}>
+                    Updated {formatDate(project.updated_at)}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

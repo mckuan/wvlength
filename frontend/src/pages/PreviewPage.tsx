@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import axios from "axios"
+import { api } from "../lib/api"
 import DataPreview from "../components/PreviewPage/DataPreview"
 import DataTransforms from "../components/PreviewPage/DataTransform"
 
@@ -8,6 +8,11 @@ export default function PreviewPage() {
   const location = useLocation()
   const navigate  = useNavigate()
   const result    = location.state?.dataset
+  // present only when arriving here from ProjectPage's "set up this graph"
+  // flow — carried through untouched so ChartPage can PATCH the right block
+  const projectId: number | undefined = location.state?.projectId
+  const blockId: string | undefined = location.state?.blockId
+
   const [transformedDataset, setTransformedDataset] = useState(result)
   const [resetting, setResetting] = useState(false)
 
@@ -21,13 +26,13 @@ export default function PreviewPage() {
   }
 
   const handleContinue = () => {
-    navigate("/chart", { state: { dataset: transformedDataset } })
+    navigate("/chart", { state: { dataset: transformedDataset, projectId, blockId } })
   }
 
   const handleReset = async () => {
     setResetting(true)
     try {
-      const res = await axios.post("http://localhost:8000/transforms/reset", {
+      const res = await api.post("/transforms/reset", {
         file_id: result.file_id,
       })
       // restore frontend state to original data
@@ -54,7 +59,7 @@ export default function PreviewPage() {
         borderBottom: "0.5px solid #dce8f0", background: "#F7F4F3", flexShrink: 0,
       }}>
         <button
-          onClick={() => navigate("/upload")}
+          onClick={() => navigate("/upload", { state: { projectId, blockId } })}
           style={{ fontSize: 12, color: "#5F7B94", background: "none", border: "none", cursor: "pointer" }}
         >
           ← Back to upload

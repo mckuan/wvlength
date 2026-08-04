@@ -1,9 +1,10 @@
 // pages/ProjectPage.tsx
-// The page a user lands on after "New Project": starts blank, and lets
-// them build up the doc one block at a time (text / new graph / past graph).
-// Persistence to the backend isn't wired yet — this is the editor shell.
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+// The page a user lands on after "New Project". Route is either
+// /project/new (creates a project immediately, then redirects to its id)
+// or /project/:id (loads an existing one). Blocks autosave on change.
+import { useEffect, useRef, useState } from "react"
+import { useNavigate, useParams } from "react-router-dom"
+import { api } from "../lib/api"
 import BlockPicker from "../components/Project/BlockPicker"
 import TextBlockView from "../components/Project/TextBlockView"
 import GraphBlockView from "../components/Project/GraphBlockView"
@@ -13,10 +14,66 @@ const NAVY       = "#243B53"
 const TEXT_MUTED = "#5F7B94"
 const BORDER     = "#E8EFF4"
 
+type SaveStatus = "idle" | "saving" | "saved" | "error"
+
 export default function ProjectPage() {
   const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  const [projectId, setProjectId] = useState<number | null>(null)
   const [name, setName] = useState("Untitled project")
   const [blocks, setBlocks] = useState<Block[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
+
+  // load or create the project on mount / when the route id changes
+  useEffect(() => {
+    let cancelled = false
+    setLoaded(false)
+
+    async function init() {
+      if (!id || id === "new") {
+        const { data } = await api.post("/projects/", {
+          name: "Untitled project",
+          blocks: [],
+        })
+        if (cancelled) return
+        navigate(`/project/${data.id}`, { replace: true })
+        return // the redirect re-triggers this effect with the real id
+      }
+      const { data } = await api.get(`/projects/${id}`)
+      if (cancelled) return
+      setProjectId(data.id)
+      setName(data.name)
+      setBlocks(data.blocks ?? [])
+      setLoaded(true)
+    }
+
+    init().catch(() => {
+      if (!cancelled) setSaveStatus("error")
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [id, navigate])
+
+  // debounced autosave — fires on any name/blocks change after the initial load
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!loaded || !projectId) return
+    setSaveStatus("saving")
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    autosaveTimer.current = setTimeout(() => {
+      api
+        .put(`/projects/${projectId}`, { name, blocks })
+        .then(() => setSaveStatus("saved"))
+        .catch(() => setSaveStatus("error"))
+    }, 800)
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, blocks, loaded, projectId])
 
   function insertAt(index: number, block: Block) {
     setBlocks(prev => {
@@ -34,34 +91,52 @@ export default function ProjectPage() {
     setBlocks(prev => prev.filter(b => b.id !== id))
   }
 
+  function goConfigureGraph(blockId: string) {
+    navigate("/upload", { state: { projectId, blockId } })
+  }
+
   function handleAddNewGraph(index: number) {
-    // TODO: route into the existing upload → chart flow, then write the
-    // resulting file_id/chart_config back onto this block instead of
-    // navigating away outright.
-    insertAt(index, makeGraphBlock())
+    const block = makeGraphBlock()
+    insertAt(index, block)
+    goConfigureGraph(block.id)
   }
 
   function handleAddPastGraph(index: number) {
-    // TODO: open a picker over the user's saved projects/graphs and set
-    // source_project_id on the resulting block once one is chosen.
+    // TODO: open a picker over GET /projects/graphs and set source_project_id
+    // + copy file_id/chart_config onto the resulting block once one is chosen.
     insertAt(index, makeGraphBlock())
+  }
+
+  if (!loaded) {
+    return (
+      <div className="max-w-3xl mx-auto px-6 py-14">
+        <p className="text-sm" style={{ color: TEXT_MUTED }}>Loading…</p>
+      </div>
+    )
   }
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-14">
-      {/* title */}
-      <input
-        value={name}
-        onChange={e => setName(e.target.value)}
-        className="w-full outline-none bg-transparent mb-10"
-        style={{
-          fontFamily: "Georgia, 'Times New Roman', serif",
-          fontSize: 34,
-          fontWeight: 500,
-          color: NAVY,
-          border: "none",
-        }}
-      />
+      {/* title + save status */}
+      <div className="flex items-center justify-between mb-10">
+        <input
+          value={name}
+          onChange={e => setName(e.target.value)}
+          className="w-full outline-none bg-transparent"
+          style={{
+            fontFamily: "Georgia, 'Times New Roman', serif",
+            fontSize: 34,
+            fontWeight: 500,
+            color: NAVY,
+            border: "none",
+          }}
+        />
+        <span className="text-xs shrink-0 ml-4" style={{ color: TEXT_MUTED }}>
+          {saveStatus === "saving" && "Saving…"}
+          {saveStatus === "saved" && "Saved"}
+          {saveStatus === "error" && "Failed to save"}
+        </span>
+      </div>
 
       {blocks.length === 0 ? (
         <EmptyState
@@ -88,7 +163,7 @@ export default function ProjectPage() {
                 ) : (
                   <GraphBlockView
                     block={block}
-                    onConfigure={() => navigate("/upload", { state: { returnToProject: true } })}
+                    onConfigure={() => goConfigureGraph(block.id)}
                     onRemove={() => removeBlock(block.id)}
                   />
                 )}

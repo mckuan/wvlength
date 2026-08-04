@@ -3,6 +3,8 @@
 // Mirrors the backend direction: a Project will hold an ordered `blocks[]`
 // instead of a single file_id + chart_config.
 
+import type { ChartConfigSnapshot } from "../components/ChartPage/ChartBuilder"
+
 export type BlockType = "text" | "graph"
 
 export interface TextBlockData {
@@ -18,7 +20,7 @@ export interface GraphBlockData {
   // undefined means this block is still an empty placeholder
   file_id?: string
   filename?: string
-  chart_config?: Record<string, unknown>
+  chart_config?: ChartConfigSnapshot
   // present only when this block reuses a graph saved on another project,
   // rather than defining its own chart_config
   source_project_id?: number

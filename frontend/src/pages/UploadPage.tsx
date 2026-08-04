@@ -1,6 +1,7 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import axios from "axios"
+import { api } from "../lib/api"
 import DropZone from "../components/Upload/DropZone"
 import DataPreview from "../components/PreviewPage/DataPreview"
 import PastUploads from "../components/Upload/PastUploads"
@@ -22,6 +23,12 @@ interface UploadResult {
 
 export default function UploadPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  // present only when arriving here from ProjectPage's "set up this graph"
+  // flow — carried through untouched so ChartPage can PATCH the right block
+  const projectId: number | undefined = location.state?.projectId
+  const blockId: string | undefined = location.state?.blockId
+
   const [result, setResult] = useState<UploadResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,11 +43,11 @@ export default function UploadPage() {
     formData.append("file", file)
 
     try {
-      const res = await axios.post("http://localhost:8000/upload/", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    })
+      const res = await api.post("/upload/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
       setRefreshTrigger(t => t + 1)
-      navigate("/preview", { state: { dataset: res.data } })
+      navigate("/preview", { state: { dataset: res.data, projectId, blockId } })
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.detail) {
         setError(err.response.data.detail)
@@ -57,8 +64,8 @@ export default function UploadPage() {
     setError(null)
     setResult(null)
     try {
-      const res = await axios.get(`http://localhost:8000/upload/files/${file_id}/preview`)
-      navigate("/preview", { state: { dataset: res.data } })
+      const res = await api.get(`/upload/files/${file_id}/preview`)
+      navigate("/preview", { state: { dataset: res.data, projectId, blockId } })
     } catch (err) {
       setError("Failed to load past upload.")
     } finally {
@@ -68,7 +75,7 @@ export default function UploadPage() {
 
   const handleContinue = () => {
     if (!result) return
-    navigate("/chart", { state: { dataset: result } })
+    navigate("/chart", { state: { dataset: result, projectId, blockId } })
   }
 
   return (

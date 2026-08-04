@@ -21,7 +21,8 @@ export default function App() {
           <Route path="/sign-in" element={<SignInPage />} />
 
           {/* everything past this point requires a logged-in user */}
-          <Route path ="/project" element={<ProtectedRoute><ProjectPage /></ProtectedRoute>} />
+          <Route path="/project/new" element={<ProtectedRoute><ProjectPage /></ProtectedRoute>} />
+          <Route path="/project/:id" element={<ProtectedRoute><ProjectPage /></ProtectedRoute>} />
           <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
           <Route path="/chart" element={<ProtectedRoute><ChartPage /></ProtectedRoute>} />
           <Route path="/preview" element={<ProtectedRoute><PreviewPage /></ProtectedRoute>} />

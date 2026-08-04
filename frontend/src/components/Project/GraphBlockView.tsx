@@ -12,14 +12,15 @@ interface GraphBlockViewProps {
   block: GraphBlockData
   onConfigure: () => void
   onRemove: () => void
+  onRename: (name: string) => void
 }
 
 // Graph blocks are snapshots — a captured PNG + stats, not a live editable
 // chart. An unconfigured block (no image_url yet) shows the setup prompt;
 // once captured, it's a static image plus a small stats table. There's no
-// "edit in place" — removing and adding a new graph block is the intended
-// way to change one.
-export default function GraphBlockView({ block, onConfigure, onRemove }: GraphBlockViewProps) {
+// "edit in place" for the chart itself — removing and adding a new graph
+// block is the intended way to change one — but the name stays editable.
+export default function GraphBlockView({ block, onConfigure, onRemove, onRename }: GraphBlockViewProps) {
   const isConfigured = Boolean(block.image_url)
   const [imgSrc, setImgSrc] = useState<string | null>(null)
   const [imgError, setImgError] = useState(false)
@@ -51,6 +52,15 @@ export default function GraphBlockView({ block, onConfigure, onRemove }: GraphBl
 
   return (
     <div className="group relative">
+      {isConfigured && (
+        <input
+          value={block.name ?? ""}
+          onChange={e => onRename(e.target.value)}
+          placeholder="Untitled graph"
+          className="w-full outline-none bg-transparent mb-1.5 text-sm font-medium"
+          style={{ color: NAVY, border: "none" }}
+        />
+      )}
       {isConfigured ? (
         <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
           {imgError ? (

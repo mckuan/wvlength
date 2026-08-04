@@ -6,9 +6,10 @@ import { useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { api } from "../lib/api"
 import BlockPicker from "../components/Project/BlockPicker"
+import PastGraphPicker, { type PastGraphEntry } from "../components/Project/PastGraphPicker"
 import TextBlockView from "../components/Project/TextBlockView"
 import GraphBlockView from "../components/Project/GraphBlockView"
-import { type Block, makeTextBlock, makeGraphBlock } from "../types/Block"
+import { type Block, type GraphBlockData, makeTextBlock, makeGraphBlock } from "../types/Block"
 
 const NAVY       = "#243B53"
 const TEXT_MUTED = "#5F7B94"
@@ -24,6 +25,7 @@ export default function ProjectPage() {
   const [blocks, setBlocks] = useState<Block[]>([])
   const [loaded, setLoaded] = useState(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
+  const [pastGraphPickerIndex, setPastGraphPickerIndex] = useState<number | null>(null)
 
   // load or create the project on mount / when the route id changes
   useEffect(() => {
@@ -102,10 +104,23 @@ export default function ProjectPage() {
   }
 
   function handleAddPastGraph(index: number) {
-    // TODO: open a picker over GET /projects/graphs and set source_project_id
-    // + source_block_id on the resulting block once one is chosen, pointing
-    // at the same stored image/stats instead of capturing a new one.
-    insertAt(index, makeGraphBlock())
+    setPastGraphPickerIndex(index)
+  }
+
+  function handleSelectPastGraph(index: number, graph: PastGraphEntry) {
+    const block: Block = {
+      id: crypto.randomUUID(),
+      type: "graph",
+      name: graph.name,
+      chart_type: graph.chart_type,
+      image_url: graph.image_url,
+      stats: graph.stats as GraphBlockData["stats"],
+      created_at: graph.created_at,
+      source_project_id: graph.project_id,
+      source_block_id: graph.block_id,
+    }
+    insertAt(index, block)
+    setPastGraphPickerIndex(null)
   }
 
   if (!loaded) {
@@ -144,14 +159,25 @@ export default function ProjectPage() {
           onAddText={() => insertAt(0, makeTextBlock())}
           onAddNewGraph={() => handleAddNewGraph(0)}
           onAddPastGraph={() => handleAddPastGraph(0)}
+          pickerOpen={pastGraphPickerIndex === 0}
+          onSelectPastGraph={g => handleSelectPastGraph(0, g)}
+          onClosePastGraphPicker={() => setPastGraphPickerIndex(null)}
         />
       ) : (
         <div>
-          <BlockPicker
-            onAddText={() => insertAt(0, makeTextBlock())}
-            onAddNewGraph={() => handleAddNewGraph(0)}
-            onAddPastGraph={() => handleAddPastGraph(0)}
-          />
+          <div className="relative">
+            <BlockPicker
+              onAddText={() => insertAt(0, makeTextBlock())}
+              onAddNewGraph={() => handleAddNewGraph(0)}
+              onAddPastGraph={() => handleAddPastGraph(0)}
+            />
+            {pastGraphPickerIndex === 0 && (
+              <PastGraphPicker
+                onSelect={g => handleSelectPastGraph(0, g)}
+                onClose={() => setPastGraphPickerIndex(null)}
+              />
+            )}
+          </div>
           {blocks.map((block, i) => (
             <div key={block.id}>
               <div className="py-2">
@@ -166,14 +192,23 @@ export default function ProjectPage() {
                     block={block}
                     onConfigure={() => goConfigureGraph(block.id)}
                     onRemove={() => removeBlock(block.id)}
+                    onRename={newName => updateBlock(block.id, b => ({ ...b, name: newName } as Block))}
                   />
                 )}
               </div>
-              <BlockPicker
-                onAddText={() => insertAt(i + 1, makeTextBlock())}
-                onAddNewGraph={() => handleAddNewGraph(i + 1)}
-                onAddPastGraph={() => handleAddPastGraph(i + 1)}
-              />
+              <div className="relative">
+                <BlockPicker
+                  onAddText={() => insertAt(i + 1, makeTextBlock())}
+                  onAddNewGraph={() => handleAddNewGraph(i + 1)}
+                  onAddPastGraph={() => handleAddPastGraph(i + 1)}
+                />
+                {pastGraphPickerIndex === i + 1 && (
+                  <PastGraphPicker
+                    onSelect={g => handleSelectPastGraph(i + 1, g)}
+                    onClose={() => setPastGraphPickerIndex(null)}
+                  />
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -186,10 +221,16 @@ function EmptyState({
   onAddText,
   onAddNewGraph,
   onAddPastGraph,
+  pickerOpen,
+  onSelectPastGraph,
+  onClosePastGraphPicker,
 }: {
   onAddText: () => void
   onAddNewGraph: () => void
   onAddPastGraph: () => void
+  pickerOpen: boolean
+  onSelectPastGraph: (graph: PastGraphEntry) => void
+  onClosePastGraphPicker: () => void
 }) {
   return (
     <div
@@ -202,12 +243,15 @@ function EmptyState({
       <p className="text-sm mb-6" style={{ color: TEXT_MUTED }}>
         Add a graph, some notes, or pull in a chart you've already made.
       </p>
-      <div style={{ width: 240 }}>
+      <div className="relative" style={{ width: 240 }}>
         <BlockPicker
           onAddText={onAddText}
           onAddNewGraph={onAddNewGraph}
           onAddPastGraph={onAddPastGraph}
         />
+        {pickerOpen && (
+          <PastGraphPicker onSelect={onSelectPastGraph} onClose={onClosePastGraphPicker} />
+        )}
       </div>
     </div>
   )

@@ -24,11 +24,15 @@ export interface ColumnStats {
 export interface GraphBlockData {
   id: string
   type: "graph"
+  // editable by the user; auto-generated at capture time from the source
+  // file, axes, and date (see lib/graphNaming.ts), but not re-derived after
+  name?: string
   // all set together once the "new graph" or "past graph" flow finishes;
   // undefined chart_type means this block is still an empty placeholder
   chart_type?: string
   image_url?: string
   stats?: Record<string, ColumnStats>
+  created_at?: number
   // present only when this block reuses a snapshot saved on another
   // project's block, rather than capturing its own
   source_project_id?: number

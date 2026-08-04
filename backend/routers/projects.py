@@ -42,9 +42,11 @@ class TextBlock(BaseModel):
 class GraphBlock(BaseModel):
     id:                str
     type:              Literal["graph"]
+    name:              Optional[str]                    = None
     chart_type:        Optional[str]                    = None
     image_url:         Optional[str]                    = None
     stats:             Optional[dict[str, ColumnStats]] = None
+    created_at:        Optional[float]                  = None
     source_project_id: Optional[int]                    = None
     source_block_id:   Optional[str]                    = None
 
@@ -143,14 +145,24 @@ def list_all_graph_blocks(
     graphs = []
     for project in projects:
         for block in project.blocks or []:
-            if block.get("type") == "graph" and block.get("image_url"):
+            # only original captures show up here — a block that was itself
+            # created via "past graph" (source_project_id set) is a reuse of
+            # an existing entry, not a new one, so it's excluded to avoid
+            # duplicate-looking entries in the picker
+            if (
+                block.get("type") == "graph"
+                and block.get("image_url")
+                and not block.get("source_project_id")
+            ):
                 graphs.append({
                     "project_id":   project.id,
                     "project_name": project.name,
                     "block_id":     block["id"],
+                    "name":         block.get("name"),
                     "chart_type":   block.get("chart_type"),
                     "image_url":    block.get("image_url"),
                     "stats":        block.get("stats"),
+                    "created_at":   block.get("created_at"),
                 })
     return {"graphs": graphs}
 

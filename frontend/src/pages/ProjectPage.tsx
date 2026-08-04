@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { api } from "../lib/api"
+import Sidebar from "../components/Project/sidebar"
 import BlockPicker from "../components/Project/BlockPicker"
 import PastGraphPicker, { type PastGraphEntry } from "../components/Project/PastGraphPicker"
 import TextBlockView from "../components/Project/TextBlockView"
@@ -123,96 +124,107 @@ export default function ProjectPage() {
     setPastGraphPickerIndex(null)
   }
 
-  if (!loaded) {
-    return (
-      <div className="max-w-3xl mx-auto px-6 py-14">
-        <p className="text-sm" style={{ color: TEXT_MUTED }}>Loading…</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="max-w-3xl mx-auto px-6 py-14">
-      {/* title + save status */}
-      <div className="flex items-center justify-between mb-10">
-        <input
-          value={name}
-          onChange={e => setName(e.target.value)}
-          className="w-full outline-none bg-transparent"
-          style={{
-            fontFamily: "Georgia, 'Times New Roman', serif",
-            fontSize: 34,
-            fontWeight: 500,
-            color: NAVY,
-            border: "none",
-          }}
-        />
-        <span className="text-xs shrink-0 ml-4" style={{ color: TEXT_MUTED }}>
-          {saveStatus === "saving" && "Saving…"}
-          {saveStatus === "saved" && "Saved"}
-          {saveStatus === "error" && "Failed to save"}
-        </span>
-      </div>
+    <div className="flex h-screen">
+      <Sidebar
+        onExport={() => {
+          // TODO: wire up export
+        }}
+        onInviteCollaborators={() => {
+          // TODO: wire up invite flow
+        }}
+      />
 
-      {blocks.length === 0 ? (
-        <EmptyState
-          onAddText={() => insertAt(0, makeTextBlock())}
-          onAddNewGraph={() => handleAddNewGraph(0)}
-          onAddPastGraph={() => handleAddPastGraph(0)}
-          pickerOpen={pastGraphPickerIndex === 0}
-          onSelectPastGraph={g => handleSelectPastGraph(0, g)}
-          onClosePastGraphPicker={() => setPastGraphPickerIndex(null)}
-        />
-      ) : (
-        <div>
-          <div className="relative">
-            <BlockPicker
-              onAddText={() => insertAt(0, makeTextBlock())}
-              onAddNewGraph={() => handleAddNewGraph(0)}
-              onAddPastGraph={() => handleAddPastGraph(0)}
-            />
-            {pastGraphPickerIndex === 0 && (
-              <PastGraphPicker
-                onSelect={g => handleSelectPastGraph(0, g)}
-                onClose={() => setPastGraphPickerIndex(null)}
+      <div className="flex-1 overflow-y-auto">
+        {!loaded ? (
+          <div className="max-w-3xl mx-auto px-6 py-14">
+            <p className="text-sm" style={{ color: TEXT_MUTED }}>Loading…</p>
+          </div>
+        ) : (
+          <div className="max-w-3xl mx-auto px-6 py-14">
+            {/* title + save status */}
+            <div className="flex items-center justify-between mb-10">
+              <input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                className="w-full outline-none bg-transparent"
+                style={{
+                  fontFamily: "Georgia, 'Times New Roman', serif",
+                  fontSize: 34,
+                  fontWeight: 500,
+                  color: NAVY,
+                  border: "none",
+                }}
               />
+              <span className="text-xs shrink-0 ml-4" style={{ color: TEXT_MUTED }}>
+                {saveStatus === "saving" && "Saving…"}
+                {saveStatus === "saved" && "Saved"}
+                {saveStatus === "error" && "Failed to save"}
+              </span>
+            </div>
+
+            {blocks.length === 0 ? (
+              <EmptyState
+                onAddText={() => insertAt(0, makeTextBlock())}
+                onAddNewGraph={() => handleAddNewGraph(0)}
+                onAddPastGraph={() => handleAddPastGraph(0)}
+                pickerOpen={pastGraphPickerIndex === 0}
+                onSelectPastGraph={g => handleSelectPastGraph(0, g)}
+                onClosePastGraphPicker={() => setPastGraphPickerIndex(null)}
+              />
+            ) : (
+              <div>
+                <div className="relative">
+                  <BlockPicker
+                    onAddText={() => insertAt(0, makeTextBlock())}
+                    onAddNewGraph={() => handleAddNewGraph(0)}
+                    onAddPastGraph={() => handleAddPastGraph(0)}
+                  />
+                  {pastGraphPickerIndex === 0 && (
+                    <PastGraphPicker
+                      onSelect={g => handleSelectPastGraph(0, g)}
+                      onClose={() => setPastGraphPickerIndex(null)}
+                    />
+                  )}
+                </div>
+                {blocks.map((block, i) => (
+                  <div key={block.id}>
+                    <div className="py-2">
+                      {block.type === "text" ? (
+                        <TextBlockView
+                          block={block}
+                          onChange={content => updateBlock(block.id, b => ({ ...b, content } as Block))}
+                          onRemove={() => removeBlock(block.id)}
+                        />
+                      ) : (
+                        <GraphBlockView
+                          block={block}
+                          onConfigure={() => goConfigureGraph(block.id)}
+                          onRemove={() => removeBlock(block.id)}
+                          onRename={newName => updateBlock(block.id, b => ({ ...b, name: newName } as Block))}
+                        />
+                      )}
+                    </div>
+                    <div className="relative">
+                      <BlockPicker
+                        onAddText={() => insertAt(i + 1, makeTextBlock())}
+                        onAddNewGraph={() => handleAddNewGraph(i + 1)}
+                        onAddPastGraph={() => handleAddPastGraph(i + 1)}
+                      />
+                      {pastGraphPickerIndex === i + 1 && (
+                        <PastGraphPicker
+                          onSelect={g => handleSelectPastGraph(i + 1, g)}
+                          onClose={() => setPastGraphPickerIndex(null)}
+                        />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-          {blocks.map((block, i) => (
-            <div key={block.id}>
-              <div className="py-2">
-                {block.type === "text" ? (
-                  <TextBlockView
-                    block={block}
-                    onChange={content => updateBlock(block.id, b => ({ ...b, content } as Block))}
-                    onRemove={() => removeBlock(block.id)}
-                  />
-                ) : (
-                  <GraphBlockView
-                    block={block}
-                    onConfigure={() => goConfigureGraph(block.id)}
-                    onRemove={() => removeBlock(block.id)}
-                    onRename={newName => updateBlock(block.id, b => ({ ...b, name: newName } as Block))}
-                  />
-                )}
-              </div>
-              <div className="relative">
-                <BlockPicker
-                  onAddText={() => insertAt(i + 1, makeTextBlock())}
-                  onAddNewGraph={() => handleAddNewGraph(i + 1)}
-                  onAddPastGraph={() => handleAddPastGraph(i + 1)}
-                />
-                {pastGraphPickerIndex === i + 1 && (
-                  <PastGraphPicker
-                    onSelect={g => handleSelectPastGraph(i + 1, g)}
-                    onClose={() => setPastGraphPickerIndex(null)}
-                  />
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

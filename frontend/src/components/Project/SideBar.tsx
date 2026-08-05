@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Eye, Pencil, Download, UserPlus, type LucideIcon } from "lucide-react"
 
 // --- palette, copied directly from lib/chartColors.ts -------------------
@@ -12,13 +13,18 @@ const ACCENT       = "#5F7B94"
 const ACCENT_TEXT  = "#F7F4F3"
 // --------------------------------------------------------------------------
 
-type ViewMode = "page view" | "edit"
+export type ViewMode = "page view" | "edit"
 
 function Logo() {
+  const navigate = useNavigate()
   // four bars pulled straight from the chart palette, standing in for a waveform
   const heights = [10, 18, 14, 8]
   return (
-    <div className="flex items-center gap-2">
+    <button
+      onClick={() => navigate("/workspace")}
+      className="flex items-center gap-2"
+      style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+    >
       <div className="flex items-end gap-[3px]" style={{ height: 18 }}>
         {heights.map((h, i) => (
           <span
@@ -36,7 +42,7 @@ function Logo() {
         <span style={{ color: TEXT_STRONG, fontWeight: 700 }}>wv</span>
         <span style={{ color: TEXT_MUTED, fontWeight: 400 }}>length</span>
       </span>
-    </div>
+    </button>
   )
 }
 
@@ -112,25 +118,18 @@ function SidebarButton({
 }
 
 interface SidebarProps {
-  viewMode?: ViewMode
-  onViewModeChange?: (mode: ViewMode) => void
+  viewMode: ViewMode
+  onViewModeChange: (mode: ViewMode) => void
   onExport?: () => void
   onInviteCollaborators?: () => void
 }
 
 export default function Sidebar({
-  viewMode = "edit",
-  onViewModeChange = () => {},
+  viewMode,
+  onViewModeChange,
   onExport = () => {},
   onInviteCollaborators = () => {},
 }: SidebarProps) {
-  const [mode, setMode] = useState<ViewMode>(viewMode)
-
-  function handleModeChange(next: ViewMode) {
-    setMode(next)
-    onViewModeChange(next)
-  }
-
   return (
     <div
       className="h-full flex flex-col"
@@ -146,8 +145,8 @@ export default function Sidebar({
         <Logo />
       </div>
 
-      {/* page view/ edit */}
-      <ViewModeToggle mode={mode} onChange={handleModeChange} />
+      {/* page view / edit */}
+      <ViewModeToggle mode={viewMode} onChange={onViewModeChange} />
 
       {/* divider */}
       <div style={{ height: 1, background: FIELD_BORDER, margin: "20px 4px" }} />

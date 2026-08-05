@@ -9,35 +9,38 @@ interface TextBlockViewProps {
   block: TextBlockData
   onChange: (content: string) => void
   onRemove: () => void
+  readOnly?: boolean
 }
 
-export default function TextBlockView({ block, onChange, onRemove }: TextBlockViewProps) {
+export default function TextBlockView({ block, onChange, onRemove, readOnly = false }: TextBlockViewProps) {
   const ref = useRef<HTMLDivElement>(null)
 
   return (
     <div className="group relative">
       <div
         ref={ref}
-        contentEditable
+        contentEditable={!readOnly}
         suppressContentEditableWarning
-        onBlur={e => onChange(e.currentTarget.textContent ?? "")}
-        data-placeholder="Write something…"
+        onBlur={readOnly ? undefined : e => onChange(e.currentTarget.textContent ?? "")}
+        data-placeholder={readOnly ? "" : "Write something…"}
         className="outline-none text-base leading-relaxed empty-placeholder"
-        style={{ color: NAVY, minHeight: 28, whiteSpace: "pre-wrap" }}
+        style={{ color: NAVY, minHeight: 28, whiteSpace: "pre-wrap", cursor: readOnly ? "default" : "text" }}
       >
         {block.content}
       </div>
-      <button
-        onClick={onRemove}
-        className="absolute opacity-0 group-hover:opacity-100 transition-opacity"
-        style={{
-          top: 2, right: -28, color: TEXT_MUTED, background: "none", border: "none",
-          cursor: "pointer", fontSize: 12,
-        }}
-        aria-label="Remove block"
-      >
-        ✕
-      </button>
+      {!readOnly && (
+        <button
+          onClick={onRemove}
+          className="absolute opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{
+            top: 2, right: -28, color: TEXT_MUTED, background: "none", border: "none",
+            cursor: "pointer", fontSize: 12,
+          }}
+          aria-label="Remove block"
+        >
+          ✕
+        </button>
+      )}
       <style>{`
         .empty-placeholder:empty:before {
           content: attr(data-placeholder);

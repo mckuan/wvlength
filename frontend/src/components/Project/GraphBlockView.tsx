@@ -8,11 +8,24 @@ const TEXT_MUTED = "#5F7B94"
 const BORDER     = "#E8EFF4"
 const PANEL_BG   = "#F7F4F3"
 
+// shared across all mounted instances so rendering the same graph block
+// twice (e.g. the hidden measurement layer + the visible page layer in
+// PagedBlocks) doesn't trigger two separate network requests for one image
+const blobCache = new Map<string, Promise<Blob>>()
+
+function fetchImageBlob(url: string): Promise<Blob> {
+  if (!blobCache.has(url)) {
+    blobCache.set(url, api.get(url, { responseType: "blob" }).then(res => res.data))
+  }
+  return blobCache.get(url)!
+}
+
 interface GraphBlockViewProps {
   block: GraphBlockData
   onConfigure: () => void
   onRemove: () => void
   onRename: (name: string) => void
+  readOnly?: boolean
 }
 
 // Graph blocks are snapshots — a captured PNG + stats, not a live editable
@@ -20,7 +33,13 @@ interface GraphBlockViewProps {
 // once captured, it's a static image plus a small stats table. There's no
 // "edit in place" for the chart itself — removing and adding a new graph
 // block is the intended way to change one — but the name stays editable.
-export default function GraphBlockView({ block, onConfigure, onRemove, onRename }: GraphBlockViewProps) {
+export default function GraphBlockView({
+  block,
+  onConfigure,
+  onRemove,
+  onRename,
+  readOnly = false,
+}: GraphBlockViewProps) {
   const isConfigured = Boolean(block.image_url)
   const [imgSrc, setImgSrc] = useState<string | null>(null)
   const [imgError, setImgError] = useState(false)
@@ -33,11 +52,10 @@ export default function GraphBlockView({ block, onConfigure, onRemove, onRename 
     let objectUrl: string | null = null
     let cancelled = false
 
-    api
-      .get(block.image_url, { responseType: "blob" })
-      .then(res => {
+    fetchImageBlob(block.image_url)
+      .then(blob => {
         if (cancelled) return
-        objectUrl = URL.createObjectURL(res.data)
+        objectUrl = URL.createObjectURL(blob)
         setImgSrc(objectUrl)
       })
       .catch(() => {
@@ -53,13 +71,19 @@ export default function GraphBlockView({ block, onConfigure, onRemove, onRename 
   return (
     <div className="group relative">
       {isConfigured && (
-        <input
-          value={block.name ?? ""}
-          onChange={e => onRename(e.target.value)}
-          placeholder="Untitled graph"
-          className="w-full outline-none bg-transparent mb-1.5 text-sm font-medium"
-          style={{ color: NAVY, border: "none" }}
-        />
+        readOnly ? (
+          block.name ? (
+            <p className="mb-1.5 text-sm font-medium" style={{ color: NAVY }}>{block.name}</p>
+          ) : null
+        ) : (
+          <input
+            value={block.name ?? ""}
+            onChange={e => onRename(e.target.value)}
+            placeholder="Untitled graph"
+            className="w-full outline-none bg-transparent mb-1.5 text-sm font-medium"
+            style={{ color: NAVY, border: "none" }}
+          />
+        )
       )}
       {isConfigured ? (
         <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER}` }}>
@@ -100,6 +124,19 @@ export default function GraphBlockView({ block, onConfigure, onRemove, onRename 
             </div>
           )}
         </div>
+      ) : readOnly ? (
+        // read-only view of an unconfigured graph: static placeholder, not a button
+        <div
+          className="w-full flex flex-col items-center justify-center gap-2 rounded-xl"
+          style={{
+            minHeight: 160,
+            border: `1.5px dashed ${BORDER}`,
+            background: PANEL_BG,
+          }}
+        >
+          <ChartGlyph />
+          <span className="text-sm font-medium" style={{ color: NAVY }}>Not set up yet</span>
+        </div>
       ) : (
         <button
           onClick={onConfigure}
@@ -118,17 +155,19 @@ export default function GraphBlockView({ block, onConfigure, onRemove, onRename 
           <span className="text-xs" style={{ color: TEXT_MUTED }}>Choose a dataset and chart type</span>
         </button>
       )}
-      <button
-        onClick={onRemove}
-        className="absolute opacity-0 group-hover:opacity-100 transition-opacity"
-        style={{
-          top: 8, right: -28, color: TEXT_MUTED, background: "none", border: "none",
-          cursor: "pointer", fontSize: 12,
-        }}
-        aria-label="Remove block"
-      >
-        ✕
-      </button>
+      {!readOnly && (
+        <button
+          onClick={onRemove}
+          className="absolute opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{
+            top: 8, right: -28, color: TEXT_MUTED, background: "none", border: "none",
+            cursor: "pointer", fontSize: 12,
+          }}
+          aria-label="Remove block"
+        >
+          ✕
+        </button>
+      )}
     </div>
   )
 }

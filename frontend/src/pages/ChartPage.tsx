@@ -165,13 +165,6 @@ export default function ChartPage() {
         <div className="flex items-center gap-2">
           {saveError && <span style={{ fontSize: 11, color: "#e24b4a" }}>{saveError}</span>}
           <button
-            onClick={() => chartBuilderRef.current?.exportChart()}
-            className="flex items-center gap-1.5 text-xs rounded-lg px-3 py-1.5"
-            style={{ color: "#5F7B94", background: "#fff", border: "1px solid #E8EFF4", cursor: "pointer" }}
-          >
-            Export chart
-          </button>
-          <button
             onClick={isBlockMode ? handleSaveToBlock : handleAddToProject}
             disabled={saving}
             className="flex items-center gap-1.5 text-xs rounded-lg px-3 py-1.5"

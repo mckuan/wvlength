@@ -5,11 +5,12 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { api } from "../lib/api"
-import Sidebar from "../components/Project/sidebar"
+import Sidebar, { type ViewMode } from "../components/Project/sidebar"
 import BlockPicker from "../components/Project/BlockPicker"
 import PastGraphPicker, { type PastGraphEntry } from "../components/Project/PastGraphPicker"
 import TextBlockView from "../components/Project/TextBlockView"
 import GraphBlockView from "../components/Project/GraphBlockView"
+import PagedBlocks from "../components/Project/PagedBlocks.tsx"
 import { type Block, type GraphBlockData, makeTextBlock, makeGraphBlock } from "../types/Block"
 
 const NAVY       = "#243B53"
@@ -27,6 +28,8 @@ export default function ProjectPage() {
   const [loaded, setLoaded] = useState(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
   const [pastGraphPickerIndex, setPastGraphPickerIndex] = useState<number | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>("edit")
+  const isEditable = viewMode === "edit"
 
   // load or create the project on mount / when the route id changes
   useEffect(() => {
@@ -127,6 +130,8 @@ export default function ProjectPage() {
   return (
     <div className="flex h-screen">
       <Sidebar
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
         onExport={() => {
           // TODO: wire up export
         }}
@@ -139,6 +144,10 @@ export default function ProjectPage() {
         {!loaded ? (
           <div className="max-w-3xl mx-auto px-6 py-14">
             <p className="text-sm" style={{ color: TEXT_MUTED }}>Loading…</p>
+          </div>
+        ) : !isEditable ? (
+          <div className="px-6 py-14">
+            <PagedBlocks name={name} blocks={blocks} />
           </div>
         ) : (
           <div className="max-w-3xl mx-auto px-6 py-14">

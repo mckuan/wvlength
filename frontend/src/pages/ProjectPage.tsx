@@ -10,7 +10,9 @@ import BlockPicker from "../components/Project/BlockPicker"
 import PastGraphPicker, { type PastGraphEntry } from "../components/Project/PastGraphPicker"
 import TextBlockView from "../components/Project/TextBlockView"
 import GraphBlockView from "../components/Project/GraphBlockView"
-import PagedBlocks from "../components/Project/PagedBlocks.tsx"
+import PagedBlocks from "../components/Project/PagedBlocks"
+import { exportPagedBlocksAsPdf } from "../lib/exportpdf"
+import { exportProjectAsDocx } from "../lib/exportdocx"
 import { type Block, type GraphBlockData, makeTextBlock, makeGraphBlock } from "../types/Block"
 
 const NAVY       = "#243B53"
@@ -30,6 +32,8 @@ export default function ProjectPage() {
   const [pastGraphPickerIndex, setPastGraphPickerIndex] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("edit")
   const isEditable = viewMode === "edit"
+  const [inviteModalOpen, setInviteModalOpen] = useState(false)
+  const [pendingPdfExport, setPendingPdfExport] = useState(false)
 
   // load or create the project on mount / when the route id changes
   useEffect(() => {
@@ -101,6 +105,30 @@ export default function ProjectPage() {
     navigate("/upload", { state: { projectId, blockId } })
   }
 
+  // Exporting to PDF captures whatever PagedBlocks currently has rendered,
+  // so if we're not already in Page View, switch to it and wait for the
+  // paginated layout to actually paint before capturing.
+  useEffect(() => {
+    if (!pendingPdfExport || viewMode !== "page view") return
+    const timer = setTimeout(() => {
+      exportPagedBlocksAsPdf(name || "Untitled project")
+        .catch(err => console.error("PDF export failed:", err))
+        .finally(() => setPendingPdfExport(false))
+    }, 300) // brief delay so layout + any late image sizing settles first
+    return () => clearTimeout(timer)
+  }, [pendingPdfExport, viewMode, name])
+
+  function handleExportPdf() {
+    if (viewMode !== "page view") setViewMode("page view")
+    setPendingPdfExport(true)
+  }
+
+  function handleExportWord() {
+    exportProjectAsDocx(name || "Untitled project", blocks).catch(err =>
+      console.error("Word export failed:", err)
+    )
+  }
+
   function handleAddNewGraph(index: number) {
     const block = makeGraphBlock()
     insertAt(index, block)
@@ -132,12 +160,9 @@ export default function ProjectPage() {
       <Sidebar
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        onExport={() => {
-          // TODO: wire up export
-        }}
-        onInviteCollaborators={() => {
-          // TODO: wire up invite flow
-        }}
+        onExportPdf={handleExportPdf}
+        onExportWord={handleExportWord}
+        onInviteCollaborators={() => setInviteModalOpen(true)}
       />
 
       <div className="flex-1 overflow-y-auto">
@@ -234,6 +259,7 @@ export default function ProjectPage() {
           </div>
         )}
       </div>
+
     </div>
   )
 }

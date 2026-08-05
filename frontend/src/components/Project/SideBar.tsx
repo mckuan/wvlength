@@ -86,6 +86,81 @@ function ViewModeToggle({
   )
 }
 
+function ExportMenu({
+  onExportPdf,
+  onExportWord,
+}: {
+  onExportPdf: () => void
+  onExportWord: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [hover, setHover] = useState(false)
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        className="w-full flex items-center gap-2.5 rounded-lg transition-colors"
+        style={{
+          padding: "9px 10px",
+          fontSize: 13.5,
+          fontWeight: 500,
+          color: TEXT_STRONG,
+          background: hover || open ? FIELD_BG : "transparent",
+          border: `1px solid ${hover || open ? FIELD_BORDER : "transparent"}`,
+        }}
+      >
+        <Download size={15} strokeWidth={2} color={TEXT_MUTED} />
+        Export
+      </button>
+
+      {open && (
+        <div
+          className="absolute z-10 rounded-xl overflow-hidden"
+          style={{
+            top: "calc(100% + 4px)",
+            left: 0,
+            width: 200,
+            background: "#FFFFFF",
+            border: `1px solid ${FIELD_BORDER}`,
+            boxShadow: "0 8px 24px rgba(36, 59, 83, 0.12)",
+          }}
+        >
+          {[
+            { label: "Download as PDF", action: onExportPdf },
+            { label: "Download as Word", action: onExportWord },
+          ].map((opt, i) => (
+            <button
+              key={opt.label}
+              onClick={() => {
+                opt.action()
+                setOpen(false)
+              }}
+              className="w-full text-left transition-colors"
+              style={{
+                padding: "10px 12px",
+                fontSize: 13,
+                fontWeight: 500,
+                color: TEXT_STRONG,
+                background: "transparent",
+                border: "none",
+                borderTop: i === 0 ? "none" : `1px solid ${FIELD_BORDER}`,
+                cursor: "pointer",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = PANEL_BG)}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SidebarButton({
   icon: Icon,
   label,
@@ -120,14 +195,16 @@ function SidebarButton({
 interface SidebarProps {
   viewMode: ViewMode
   onViewModeChange: (mode: ViewMode) => void
-  onExport?: () => void
+  onExportPdf?: () => void
+  onExportWord?: () => void
   onInviteCollaborators?: () => void
 }
 
 export default function Sidebar({
   viewMode,
   onViewModeChange,
-  onExport = () => {},
+  onExportPdf = () => {},
+  onExportWord = () => {},
   onInviteCollaborators = () => {},
 }: SidebarProps) {
   return (
@@ -153,7 +230,7 @@ export default function Sidebar({
 
       {/* placeholders */}
       <div className="flex flex-col gap-1">
-        <SidebarButton icon={Download} label="Export" onClick={onExport} />
+        <ExportMenu onExportPdf={onExportPdf} onExportWord={onExportWord} />
         <SidebarButton icon={UserPlus} label="Invite collaborators" onClick={onInviteCollaborators} />
       </div>
     </div>

@@ -132,10 +132,11 @@ export default function PagedBlocks({ name, blocks }: PagedBlocksProps) {
       </div>
 
       {/* visible, paginated layer — purely presentational, no refs needed */}
-      <div className="flex flex-col items-center gap-10 py-4">
+      <div id="paged-blocks-export-root" className="flex flex-col items-center gap-10 py-4">
         {pages.map((pageBlocks, pageIndex) => (
           <div
             key={pageIndex}
+            data-pdf-page
             className="relative bg-white overflow-hidden"
             style={{
               width: PAGE_WIDTH,

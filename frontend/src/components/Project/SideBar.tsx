@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Eye, Pencil, Download, UserPlus, type LucideIcon } from "lucide-react"
+import { Eye, Pencil, Download, Share2, type LucideIcon } from "lucide-react"
 
 // --- palette, copied directly from lib/chartColors.ts -------------------
 const CHART_COLORS = ["#5F7B94", "#324E66", "#9DB6C9", "#3D5F78", "#7C97AC", "#243A4D"]
@@ -197,7 +197,7 @@ interface SidebarProps {
   onViewModeChange: (mode: ViewMode) => void
   onExportPdf?: () => void
   onExportWord?: () => void
-  onInviteCollaborators?: () => void
+  onShare?: () => void
 }
 
 export default function Sidebar({
@@ -205,7 +205,7 @@ export default function Sidebar({
   onViewModeChange,
   onExportPdf = () => {},
   onExportWord = () => {},
-  onInviteCollaborators = () => {},
+  onShare = () => {},
 }: SidebarProps) {
   return (
     <div
@@ -231,7 +231,7 @@ export default function Sidebar({
       {/* placeholders */}
       <div className="flex flex-col gap-1">
         <ExportMenu onExportPdf={onExportPdf} onExportWord={onExportWord} />
-        <SidebarButton icon={UserPlus} label="Invite collaborators" onClick={onInviteCollaborators} />
+        <SidebarButton icon={Share2} label="Share" onClick={onShare} />
       </div>
     </div>
   )

@@ -32,4 +32,14 @@ class Project(Base):
     created_at = Column(Float, default=time.time)
     updated_at = Column(Float, default=time.time)
 
+    # --- sharing -----------------------------------------------------
+    # share_token is null when the project isn't shared. When set, anyone
+    # with the token can access it via routers/share.py without logging
+    # in — the token itself (128 bits of entropy via secrets.token_urlsafe)
+    # is the access control, same trust model as Google Docs/Figma links.
+    # share_permission is "view" or "edit" and is only meaningful when
+    # share_token is set.
+    share_token      = Column(String, unique=True, index=True, nullable=True)
+    share_permission = Column(String, nullable=True)  # "view" | "edit"
+
     owner = relationship("User", back_populates="projects")

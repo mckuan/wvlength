@@ -9,6 +9,7 @@ import WorkspacePage from "./pages/WorkspacePage"
 import SignUpPage from "./pages/SignUpPage"
 import SignInPage from "./pages/SignInPage"
 import ProjectPage from "./pages/ProjectPage"
+import SharedProjectPage from "./pages/SharedProjectPage"
 
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/" element={<WelcomePage />} />
           <Route path="/sign-up" element={<SignUpPage />} />
           <Route path="/sign-in" element={<SignInPage />} />
+          <Route path="/shared/:token" element={<SharedProjectPage />} />
 
           {/* everything past this point requires a logged-in user */}
           <Route path="/project/new" element={<ProtectedRoute><ProjectPage /></ProtectedRoute>} />

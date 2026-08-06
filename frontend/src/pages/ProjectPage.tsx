@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { api } from "../lib/api"
 import Sidebar, { type ViewMode } from "../components/Project/sidebar"
+import ShareModal from "../components/Project/ShareModal"
 import BlockPicker from "../components/Project/BlockPicker"
 import PastGraphPicker, { type PastGraphEntry } from "../components/Project/PastGraphPicker"
 import TextBlockView from "../components/Project/TextBlockView"
@@ -20,6 +21,7 @@ const TEXT_MUTED = "#5F7B94"
 const BORDER     = "#E8EFF4"
 
 type SaveStatus = "idle" | "saving" | "saved" | "error"
+type SharePermission = "view" | "edit"
 
 export default function ProjectPage() {
   const navigate = useNavigate()
@@ -32,7 +34,9 @@ export default function ProjectPage() {
   const [pastGraphPickerIndex, setPastGraphPickerIndex] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("edit")
   const isEditable = viewMode === "edit"
-  const [inviteModalOpen, setInviteModalOpen] = useState(false)
+  const [shareToken, setShareToken] = useState<string | null>(null)
+  const [sharePermission, setSharePermission] = useState<SharePermission | null>(null)
+  const [shareModalOpen, setShareModalOpen] = useState(false)
   const [pendingPdfExport, setPendingPdfExport] = useState(false)
 
   // load or create the project on mount / when the route id changes
@@ -55,6 +59,8 @@ export default function ProjectPage() {
       setProjectId(data.id)
       setName(data.name)
       setBlocks(data.blocks ?? [])
+      setShareToken(data.share_token ?? null)
+      setSharePermission(data.share_permission ?? null)
       setLoaded(true)
     }
 
@@ -162,7 +168,7 @@ export default function ProjectPage() {
         onViewModeChange={setViewMode}
         onExportPdf={handleExportPdf}
         onExportWord={handleExportWord}
-        onInviteCollaborators={() => setInviteModalOpen(true)}
+        onShare={() => setShareModalOpen(true)}
       />
 
       <div className="flex-1 overflow-y-auto">
@@ -260,6 +266,14 @@ export default function ProjectPage() {
         )}
       </div>
 
+      {shareModalOpen && projectId && (
+        <ShareModal
+          projectId={projectId}
+          initialToken={shareToken}
+          initialPermission={sharePermission}
+          onClose={() => setShareModalOpen(false)}
+        />
+      )}
     </div>
   )
 }

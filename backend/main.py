@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import uploads, transforms, graph, projects, auth
+from routers import uploads, transforms, graph, projects, auth, share
 from database import engine, Base
 import models  # noqa: F401 — ensures User model is registered before create_all
 
@@ -21,6 +21,7 @@ app.include_router(transforms.router)
 app.include_router(graph.router)
 app.include_router(projects.router)
 app.include_router(auth.router)
+app.include_router(share.router)
 
 @app.get("/")
 def root():

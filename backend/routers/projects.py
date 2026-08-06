@@ -5,6 +5,7 @@ from typing import Literal, Optional, Union
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import os
+import secrets
 import time
 
 from database import get_db
@@ -65,6 +66,10 @@ class BlocksUpdateRequest(BaseModel):
 
 class RenameProjectRequest(BaseModel):
     name: str
+
+
+class ShareSettingsRequest(BaseModel):
+    permission: Literal["view", "edit"]
 
 
 # --- helpers -------------------------------------------------------------
@@ -222,6 +227,38 @@ def rename_project(
     db.commit()
     db.refresh(project)
     return project
+
+
+@router.post("/{project_id}/share")
+def set_share_settings(
+    project_id: int,
+    req: ShareSettingsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Turns sharing on, or changes view/edit, for a project. Reuses the
+    existing token if one's already set so a link the owner already sent
+    out doesn't break when they just flip the permission."""
+    project = _get_owned_project(project_id, current_user, db)
+    if not project.share_token:
+        project.share_token = secrets.token_urlsafe(24)
+    project.share_permission = req.permission
+    db.commit()
+    db.refresh(project)
+    return {"share_token": project.share_token, "share_permission": project.share_permission}
+
+
+@router.delete("/{project_id}/share")
+def revoke_share_link(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_owned_project(project_id, current_user, db)
+    project.share_token = None
+    project.share_permission = None
+    db.commit()
+    return {"revoked": True}
 
 
 @router.delete("/{project_id}")

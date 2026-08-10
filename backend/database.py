@@ -1,4 +1,6 @@
 # database.py
+# sets up the SQLAlchemy database engine and session factory, and provides a get_db() dependency for FastAPI routes
+
 import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine

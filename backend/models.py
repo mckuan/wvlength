@@ -1,3 +1,6 @@
+# models.py
+# defines the SQLAlchemy ORM models for the database tables, including User and Project, with their columns and relationships
+
 import time
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, JSON
 from sqlalchemy.orm import relationship

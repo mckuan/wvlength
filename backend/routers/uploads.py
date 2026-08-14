@@ -106,6 +106,9 @@ async def upload_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Only CSV files are accepted")
 
     contents = await file.read()
+    if len(contents) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="File too large — max 20MB")
+
     df = pd.read_csv(io.BytesIO(contents))
     df.columns = df.columns.str.strip()
 

@@ -11,9 +11,11 @@ app = FastAPI(title="WVLENGTH API")
 
 Base.metadata.create_all(bind=engine)
 
+Frontend_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173")   # Vite dev server
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # your Vite dev server
+    allow_origins=[Frontend_ORIGIN],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

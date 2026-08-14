@@ -1,8 +1,9 @@
 # routers/auth.py
 # returns a JWT token for authentication and user information
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel, EmailStr
+from slowapi.util import get_remote_address
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -15,7 +16,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
 class RegisterRequest(BaseModel):
     email:      EmailStr
-    password:   str
+    password:   str = Field(..., min_length=8)
     first_name: str
     last_name:  str
 
@@ -61,6 +62,7 @@ def get_current_user(
 
 
 @router.post("/register", response_model=TokenResponse)
+@limiter.limit("5/minute")
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == req.email).first()
     if existing:
@@ -81,6 +83,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("5/minute")
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == req.email).first()
     if not user or not verify_password(req.password, user.hashed_password):

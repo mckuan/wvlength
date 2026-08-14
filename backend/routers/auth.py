@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from slowapi.util import get_remote_address
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
+from limiter import limiter
 
 from database import get_db
 from models import User
@@ -63,7 +64,7 @@ def get_current_user(
 
 @router.post("/register", response_model=TokenResponse)
 @limiter.limit("5/minute")
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
+def register(request: Request, req: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == req.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="An account with this email already exists")
@@ -84,7 +85,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+def login(request: Request, req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == req.email).first()
     if not user or not verify_password(req.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect email or password")

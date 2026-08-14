@@ -1,4 +1,5 @@
 # routers/auth.py
+# returns a JWT token for authentication and user information
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr
@@ -9,10 +10,6 @@ from models import User
 from security import hash_password, verify_password, create_access_token, decode_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-# tokenUrl is only used by Swagger's "Authorize" UI — actual login below
-# accepts a plain JSON body rather than OAuth2 form data, which keeps the
-# frontend simple (no need to urlencode credentials)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
 

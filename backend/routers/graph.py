@@ -1,4 +1,6 @@
 # graph.py
+# endpoints for aggregating and summarizing data for charting, including group-by 
+#and aggregation logic, and summary statistics for numeric columns.
 from fastapi import APIRouter, HTTPException
 from typing import Optional
 from pydantic import BaseModel

@@ -1,3 +1,5 @@
+#transforms.py
+#transformations on uploaded files, including null handling, aggregation, and coordinate splitting.
 from fastapi import APIRouter, HTTPException
 from typing import Optional
 from pydantic import BaseModel
@@ -7,7 +9,6 @@ import os
 import json
  
 from routers.uploads import load_df, save_df, load_meta, reset_to_original, _ensure_working_copy
- 
 router = APIRouter(prefix="/transforms", tags=["transforms"])
  
  
@@ -48,6 +49,7 @@ class NullInfoRequest(BaseModel):
     data:    Optional[list[dict]] = None
  
  
+ #finds out which columns have nulls and how many
 @router.post("/null_info")
 def null_info(req: NullInfoRequest):
     if req.file_id:
@@ -58,6 +60,7 @@ def null_info(req: NullInfoRequest):
     else:
         raise HTTPException(status_code=400, detail="Provide either 'file_id' or 'data'")
  
+    #tries to convert each column into numeric, to identify numeric columns 
     for col in df.columns:
         try:
             df[col] = pd.to_numeric(df[col])
@@ -67,6 +70,7 @@ def null_info(req: NullInfoRequest):
     result = []
     for col in df.columns:
         null_count = int(df[col].isnull().sum())
+        #reports how many nulls are in each column
         if null_count == 0:
             continue
         result.append({
@@ -88,7 +92,7 @@ class NullCleanRequest(BaseModel):
     data:     Optional[list[dict]] = None
     columns:  dict[str, FillSpec]
  
- 
+ #fill/drop logic
 @router.post("/clean_nulls")
 def clean_nulls(req: NullCleanRequest):
     if req.file_id:
@@ -104,7 +108,7 @@ def clean_nulls(req: NullCleanRequest):
             df[col] = pd.to_numeric(df[col])
         except (ValueError, TypeError):
             pass
- 
+    #each column has a strategy for how to handle nulls, which is applied here
     drop_rows_mask = pd.Series([False] * len(df), index=df.index)
  
     for col, spec in req.columns.items():
@@ -127,6 +131,7 @@ def clean_nulls(req: NullCleanRequest):
             mode = df[col].mode()
             if not mode.empty:
                 df[col] = df[col].fillna(mode.iloc[0])
+        #if filling w number fails, keep as original instead of error
         elif spec.strategy == "fill":
             if spec.value is None:
                 raise HTTPException(status_code=400, detail=f"No fill value for '{col}'")
@@ -145,6 +150,7 @@ def clean_nulls(req: NullCleanRequest):
  
     df = df[~drop_rows_mask].reset_index(drop=True)
  
+    #save into working file
     if req.file_id:
         meta = load_meta(req.file_id)
         save_df(req.file_id, df, meta["filename"])
@@ -166,7 +172,7 @@ class AggregateMultiRequest(BaseModel):
     group_by:     str
     aggregations: dict[str, str]
  
- 
+ #group by and aggregation logic
 @router.post("/aggregate_multi")
 def aggregate_multi(req: AggregateMultiRequest):
     if req.file_id:
@@ -227,7 +233,7 @@ class SplitCoordinatesRequest(BaseModel):
     file_id: str
     columns: list[str]
  
- 
+ #handles splitting coordinates
 @router.post("/split_coordinates")
 def split_coordinates(req: SplitCoordinatesRequest):
     _ensure_working_copy(req.file_id)
@@ -249,6 +255,7 @@ def split_coordinates(req: SplitCoordinatesRequest):
         except Exception:
             return []
  
+    #count the number of dimensions in each coordinate column, and create new columns for each dimension
     for col in existing:
         parsed = df[col].apply(parse_coord)
         max_dims = parsed.apply(len).max()

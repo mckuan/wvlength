@@ -1,33 +1,32 @@
 // lib/exportDocx.ts
+// Builds a Word document from the project name + blocks, then triggers download
 import { Document, ImageRun, Packer, Paragraph, TextRun } from "docx"
 import { saveAs } from "file-saver"
 import { api } from "./api"
 import type { Block } from "../types/Block"
 
-// mirrors the site's palette/type scale (see lib/chartColors.ts) — docx has
-// no concept of "inherit the page's CSS," every run needs its size/color
-// spelled out explicitly or it falls back to Word's built-in Normal/Title
-// styles, which is what was making everything render oversized
+//docx needs everything spelled out bc no concept of inherit css
 const NAVY       = "243B53"
 const TEXT_MUTED = "5F7B94"
 
-// sizes are in half-points (docx's unit) — roughly px / 1.33
-const TITLE_SIZE = 48 // ~24pt, matches the site's 34px doc title reasonably
-const NAME_SIZE  = 22 // ~11pt, matches graph block names
-const BODY_SIZE  = 24 // ~12pt, matches the site's 16px body text
-const STATS_SIZE = 18 // ~9pt, small caption text
+const TITLE_SIZE = 48 
+const NAME_SIZE  = 22 
+const BODY_SIZE  = 24 
+const STATS_SIZE = 18 
 
+
+//graph blocks store a snapshot of the chart (PNG) + summary stats, not the live chart config.
 async function fetchImageBuffer(url: string): Promise<ArrayBuffer> {
   const res = await api.get(url, { responseType: "arraybuffer" })
   return res.data
 }
 
-// docx needs explicit pixel dimensions for every embedded image — there's
-// no "auto" sizing. Load the buffer into an <img> just to read its natural
-// width/height, then scale proportionally so charts keep their real aspect
-// ratio instead of being stretched into a fixed box.
+// docx needs explicit pixel dimensions for every embedded image 
 const MAX_IMAGE_WIDTH = 500
 
+//bc docx doesn't know the natural dimensions of an image, 
+// we have to load it in memory and check its naturalWidth/naturalHeight
+// then scale down if it's too wide.
 async function getScaledDimensions(buffer: ArrayBuffer): Promise<{ width: number; height: number }> {
   const blob = new Blob([buffer], { type: "image/png" })
   const objectUrl = URL.createObjectURL(blob)
@@ -48,9 +47,7 @@ async function getScaledDimensions(buffer: ArrayBuffer): Promise<{ width: number
   }
 }
 
-// Builds a real Word document from the block data (not a screenshot) —
-// text blocks become paragraphs, graph blocks embed the chart image plus a
-// short line per column of stats.
+// Builds a real Word document from going through blocks array, manually constructs word document primitives
 export async function exportProjectAsDocx(name: string, blocks: Block[]) {
   const children: Paragraph[] = [
     new Paragraph({
@@ -92,9 +89,6 @@ export async function exportProjectAsDocx(name: string, blocks: Block[]) {
               new ImageRun({
                 data: buffer,
                 transformation: { width, height },
-                // captured chart snapshots are always PNG (see ChartPage's
-                // "chart.png" upload) — the image URL itself has no file
-                // extension to sniff, since it's served by route, not path
                 type: "png",
               }),
             ],

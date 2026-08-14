@@ -1,3 +1,5 @@
+//api wrapping /graph endpoint for aggregating and summarizing data for charting, including 
+// group-by and aggregation logic, and summary statistics for numeric columns.
 import { api } from "./api"
 
 interface MultiAggregateParams {

@@ -1,3 +1,7 @@
+#uploads.py
+#endpoint for uploading CSV files, storing them as parquet, and returning a preview of the data. 
+#Also includes endpoints for listing uploaded files, retrieving previews, and deleting files.
+
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import Optional
 from pydantic import BaseModel
@@ -15,25 +19,24 @@ router = APIRouter(prefix="/upload", tags=["upload"])
 STORAGE_DIR = os.path.join(os.path.dirname(__file__), ".csv_store")
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
-
+# unique file ID to store the parquet file and metadata, based on filename + timestamp
 def _file_id(filename: str) -> str:
     ts = str(time.time())
     raw = f"{filename}:{ts}"
     return hashlib.md5(raw.encode()).hexdigest()[:12]
 
-
+#3 files on disk, original, working copy, and metadata sidecar. All three are deleted when the file is deleted.
 def _parquet_path(file_id: str) -> str:
     return os.path.join(STORAGE_DIR, f"{file_id}.parquet")
 
-
 def _original_path(file_id: str) -> str:
     return os.path.join(STORAGE_DIR, f"{file_id}_original.parquet")
-
 
 def _meta_path(file_id: str) -> str:
     return os.path.join(STORAGE_DIR, f"{file_id}.meta.json")
 
 
+#if no working copy yet, create one from original
 def _ensure_working_copy(file_id: str) -> None:
     """If no working copy exists yet, create one from the original."""
     working = _parquet_path(file_id)
@@ -44,8 +47,8 @@ def _ensure_working_copy(file_id: str) -> None:
         shutil.copy2(original, working)
 
 
+#writes working copy to disk and updates the metadata sidecar. Does not overwrite original.
 def save_df(file_id: str, df: pd.DataFrame, filename: str) -> None:
-    """Write working copy + update metadata sidecar."""
     df.to_parquet(_parquet_path(file_id), index=False)
     meta = {
         "file_id": file_id,
@@ -58,8 +61,8 @@ def save_df(file_id: str, df: pd.DataFrame, filename: str) -> None:
         json.dump(meta, f)
 
 
+#loads the working copy if it exists, otherwise the original copy. Raises 404 if neither exists.
 def load_df(file_id: str) -> pd.DataFrame:
-    """Load working copy. Falls back to original if working copy doesn't exist."""
     working = _parquet_path(file_id)
     original = _original_path(file_id)
     if os.path.exists(working):
@@ -73,6 +76,7 @@ def load_df(file_id: str) -> pd.DataFrame:
     return df
 
 
+#loads the metadata sidecar for a given file ID. Raises 404 if not found.
 def load_meta(file_id: str) -> dict:
     path = _meta_path(file_id)
     if not os.path.exists(path):
@@ -81,6 +85,7 @@ def load_meta(file_id: str) -> dict:
         return json.load(f)
 
 
+# reset endpoint: delete working copy and restore original
 def reset_to_original(file_id: str) -> pd.DataFrame:
     """Delete working copy and restore original. Returns the original df."""
     working = _parquet_path(file_id)
@@ -94,6 +99,7 @@ def reset_to_original(file_id: str) -> pd.DataFrame:
     return df
 
 
+#endpoint: upload CSV file, stored twice, once original and once working copy. Returns a preview of the data.
 @router.post("/")
 async def upload_csv(file: UploadFile = File(...)):
     if not file.filename.endswith(".csv"):
@@ -105,7 +111,6 @@ async def upload_csv(file: UploadFile = File(...)):
 
     file_id = _file_id(file.filename)
 
-    # save original (never overwritten) and working copy
     df.to_parquet(_original_path(file_id), index=False)
     save_df(file_id, df, file.filename)
 
@@ -137,6 +142,7 @@ async def upload_csv(file: UploadFile = File(...)):
     }
 
 
+#endpoint: uses meta sidecard to list all uploaded files
 @router.get("/files")
 def list_files():
     files = []
@@ -148,6 +154,7 @@ def list_files():
     return {"files": files}
 
 
+#endpoint: get a preview of a specific file
 @router.get("/files/{file_id}/preview")
 def get_preview(file_id: str):
     df = load_df(file_id)
@@ -161,7 +168,7 @@ def get_preview(file_id: str):
         "preview": preview,
     }
 
-
+#endpoint: delete a specific file (both original and working copy)
 @router.delete("/files/{file_id}")
 def delete_file(file_id: str):
     removed = []

@@ -1,14 +1,12 @@
 // lib/exportPdf.ts
+//exports a pdf by screenshotting what is currently rendered in Page View (each page is tagged with data-pdf-page)
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
 
 const LETTER_WIDTH_IN = 8.5
 const LETTER_HEIGHT_IN = 11
 
-// Renders whatever PagedBlocks currently has on screen (each element tagged
-// with data-pdf-page) into a multi-page Letter-sized PDF. This only works
-// while Page View is actually mounted — the caller is responsible for
-// switching to Page View and waiting a tick before calling this.
+// Should be called after Page View rendered, essentailly a giant screenshot of the page view
 export async function exportPagedBlocksAsPdf(filename: string) {
   const container = document.getElementById("paged-blocks-export-root")
   if (!container) {

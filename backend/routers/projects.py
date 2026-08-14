@@ -18,8 +18,6 @@ IMAGE_DIR = os.path.join(os.path.dirname(__file__), ".chart_images")
 os.makedirs(IMAGE_DIR, exist_ok=True)
 
 
-# --- block schemas -----------------------------------------------------
-# mirrors frontend/src/types/blocks.ts — keep these in sync by hand for now.
 # Graph blocks are snapshots (captured PNG + stats), not live chart_config —
 # there's no in-place "edit," a user who wants a different chart makes a
 # new block. This also means a block no longer depends on its source file

@@ -1,4 +1,5 @@
 # security.py
+# hash and verify passwords, create and decode JWT tokens
 import os
 import time
 from typing import Optional

@@ -42,7 +42,7 @@ export default function DataPreview({ filename, rows, columns, preview }: Props)
           </thead>
           <tbody>
             {preview.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? "#F7F4F3" : "#E8EFF4"}>
+              <tr key={i} style={{ background: i % 2 === 0 ? "#F7F4F3" : "#E8EFF4" }}>
                 {columns.map((col) => (
                   <td key={col.name} className="px-4 py-2 text-gray-700 whitespace-nowrap">
                     {String(row[col.name])}

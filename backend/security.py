@@ -9,9 +9,9 @@ from passlib.context import CryptContext
 
 load_dotenv()
 
-# NOTE: set a real SECRET_KEY via env var in any non-local environment —
-# this default is fine for local dev only
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "dev-secret-change-me")
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET_KEY environment variable must be set")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_SECONDS = 60 * 60 * 24  # 24 hours
 

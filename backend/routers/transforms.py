@@ -239,9 +239,6 @@ def split_coordinates(req: SplitCoordinatesRequest):
     _ensure_working_copy(req.file_id)
     df = load_df(req.file_id)
  
-    print("ACTUAL COLUMNS:", df.columns.tolist())
-    print("REQUESTED:", req.columns)
- 
     existing = [col for col in req.columns if col in df.columns]
     missing  = [col for col in req.columns if col not in df.columns]
     if missing:

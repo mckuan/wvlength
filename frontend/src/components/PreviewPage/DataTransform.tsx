@@ -175,7 +175,6 @@ export default function DataTransforms({ fileId, columns, preview, onTransform, 
   // null state
   const [nulls, setNulls]       = useState<NullInfo[]>([])
   const [nullSpecs, setNullSpecs] = useState<Record<string, FillSpec>>({})
-  const [nullLoading, setNullLoading] = useState(false)
   const [nullApplying, setNullApplying] = useState(false)
   const [nullError, setNullError] = useState<string | null>(null)
 
@@ -211,7 +210,6 @@ export default function DataTransforms({ fileId, columns, preview, onTransform, 
   // fetch null info on mount
   useEffect(() => {
     if (!fileId) return
-    setNullLoading(true)
     api.post("/transforms/null_info", { file_id: fileId })
       .then(res => {
         const info: NullInfo[] = res.data.nulls
@@ -220,7 +218,6 @@ export default function DataTransforms({ fileId, columns, preview, onTransform, 
         if (info.length === 0) setStep("split")
       })
       .catch(() => setNullError("Could not load null info."))
-      .finally(() => setNullLoading(false))
   }, [fileId])
 
   // ── Handlers ─────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
-
 import { useState, useEffect } from "react"
+import { api } from "../../lib/api"
 import axios from "axios"
 
 interface Column {
@@ -212,7 +212,7 @@ export default function DataTransforms({ fileId, columns, preview, onTransform, 
   useEffect(() => {
     if (!fileId) return
     setNullLoading(true)
-    axios.post("http://localhost:8000/transforms/null_info", { file_id: fileId })
+    api.post("/transforms/null_info", { file_id: fileId })
       .then(res => {
         const info: NullInfo[] = res.data.nulls
         setNulls(info)
@@ -229,7 +229,7 @@ export default function DataTransforms({ fileId, columns, preview, onTransform, 
     setNullApplying(true)
     setNullError(null)
     try {
-      const res = await axios.post("http://localhost:8000/transforms/clean_nulls", {
+      const res = await api.post("/transforms/clean_nulls", {
         file_id: fileId, columns: nullSpecs,
       })
       onTransform({ file_id: res.data.file_id, columns: res.data.columns, preview: res.data.preview, rows: res.data.rows })
@@ -245,7 +245,7 @@ export default function DataTransforms({ fileId, columns, preview, onTransform, 
     setSplitLoading(true)
     setSplitError(null)
     try {
-      const res = await axios.post("http://localhost:8000/transforms/split_coordinates", {
+      const res = await api.post("/transforms/split_coordinates", {
         file_id: fileId, columns: selectedCols,
       })
       onTransform({ file_id: res.data.file_id, columns: res.data.columns, preview: res.data.preview, rows: res.data.rows })
@@ -263,7 +263,7 @@ export default function DataTransforms({ fileId, columns, preview, onTransform, 
     try {
       const currentNumericCols = columns.filter(isNumeric)
       const currentStringCols  = columns.filter(c => !isNumeric(c) && c.name !== groupBy)
-      const res = await axios.post("http://localhost:8000/transforms/aggregate_multi", {
+      const res = await api.post("/transforms/aggregate_multi", {
         file_id: fileId,
         group_by: groupBy,
         aggregations: {

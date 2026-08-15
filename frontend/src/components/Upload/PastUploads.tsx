@@ -1,5 +1,6 @@
 // frontend/src/components/Upload/PastUploads.tsx
 import { useEffect, useState } from "react"
+import { api } from "../../lib/api"
 
 interface FileMeta {
   file_id: string
@@ -18,9 +19,8 @@ export default function PastUploads({ onSelect, refreshTrigger }: Props) {
   const [files, setFiles] = useState<FileMeta[]>([])
 
   useEffect(() => {
-    fetch("http://localhost:8000/upload/files")
-      .then(r => r.json())
-      .then(data => setFiles(data.files.slice(0, 5)))
+    api.get("/upload/files")
+      .then(res => setFiles(res.data.files.slice(0, 5)))
       .catch(() => {})
   }, [refreshTrigger])
 

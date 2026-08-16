@@ -1,6 +1,8 @@
 # wvlength
  
 Turn a CSV into a shareable, multi-chart report — upload your data, build charts against it, arrange them alongside notes in a document, and share the finished thing with a link.
+
+## LIVE LINK: 
  
 ## Features
  
@@ -12,6 +14,10 @@ Turn a CSV into a shareable, multi-chart report — upload your data, build char
 * Chart aggregation is read-only end-to-end — viewing/tweaking a chart never mutates your stored dataset, even though it reuses the same grouping logic as the data-cleaning step
 
 Here's what it looks like in project:
+<img width="1275" height="1650" alt="demo-1" src="https://github.com/user-attachments/assets/daf735c8-fbb0-4767-a5ef-36b75c232ede" />
+<img width="1275" height="1650" alt="demo-2" src="https://github.com/user-attachments/assets/b9e701b0-1c49-4094-a0c5-d6ee1ab05c6c" />
+<img width="1275" height="1650" alt="demo-3" src="https://github.com/user-attachments/assets/94dbefec-b18d-4752-b05b-7c028abe8da4" />
+<img width="1275" height="1650" alt="demo-4" src="https://github.com/user-attachments/assets/6b46d29f-654d-4147-b187-a0bb5aeef068" />
 
 Below are some CSV files to try out:
 
@@ -25,6 +31,15 @@ Below are some CSV files to try out:
 * Up to 5 uploaded files are kept at once, oldest evicted automatically
 
 Here's what it looks like:
+<img width="1445" height="766" alt="Screenshot 2026-08-15 at 6 21 05 PM" src="https://github.com/user-attachments/assets/ab5841e2-95b6-4639-b8be-d533fb46075f" />
+
+<img width="1446" height="786" alt="Screenshot 2026-08-15 at 6 21 14 PM" src="https://github.com/user-attachments/assets/f900c169-3be0-4e91-8c34-d615f1065038" />
+
+<img width="1462" height="768" alt="Screenshot 2026-08-15 at 6 21 52 PM" src="https://github.com/user-attachments/assets/0237ab0a-5098-41d0-af0d-d8e3b82d8c4a" />
+
+<img width="1431" height="384" alt="Screenshot 2026-08-15 at 6 21 59 PM" src="https://github.com/user-attachments/assets/f08fbb3d-3eae-475e-a8c9-b5277190c2e8" />
+
+Heres a CSV to try it out: 
 
 📄 **Projects as Documents**
  
@@ -111,5 +126,23 @@ Currently local development only — no packaged build or hosted deployment yet.
 * upload datas 
 
 ## Screenshots
- 
- 
+<img width="1454" height="789" alt="Screenshot 2026-08-15 at 6 23 43 PM" src="https://github.com/user-attachments/assets/badfc4e3-c19f-47f0-a201-cd50bae44169" />
+
+ <img width="417" height="400" alt="Screenshot 2026-08-15 at 6 23 51 PM" src="https://github.com/user-attachments/assets/c15defb3-196a-4864-b1f8-0c6939eaa839" />
+
+ <img width="469" height="477" alt="Screenshot 2026-08-15 at 6 23 55 PM" src="https://github.com/user-attachments/assets/711194f2-8e79-4a80-ae41-88f683991adf" />
+
+<img width="1450" height="408" alt="Screenshot 2026-08-15 at 6 24 29 PM" src="https://github.com/user-attachments/assets/b83e4150-aa72-4ec4-b004-28adaede6fb5" />
+
+<img width="1464" height="648" alt="Screenshot 2026-08-15 at 6 24 40 PM" src="https://github.com/user-attachments/assets/6a224da9-a5a4-4ee8-8f94-3546ae96e4a5" />
+
+<img width="1419" height="627" alt="Screenshot 2026-08-15 at 6 24 56 PM" src="https://github.com/user-attachments/assets/c2050225-7640-417d-93ab-59f7d1a159f0" />
+
+<img width="1003" height="706" alt="Screenshot 2026-08-15 at 6 25 06 PM" src="https://github.com/user-attachments/assets/4f2efb69-f590-4726-9804-6a0a0c2f2906" />
+
+<img width="1459" height="462" alt="Screenshot 2026-08-15 at 6 25 18 PM" src="https://github.com/user-attachments/assets/264d4d8d-2786-4fa1-be01-0336f7e723ac" />
+
+<img width="1431" height="735" alt="Screenshot 2026-08-15 at 6 25 48 PM" src="https://github.com/user-attachments/assets/d41e2f65-d8f7-40e8-ab6d-43d74a47711a" />
+
+<img width="1442" height="699" alt="Screenshot 2026-08-15 at 6 26 04 PM" src="https://github.com/user-attachments/assets/59dcb513-f655-4805-9944-805e69cdb764" />
+

@@ -10,6 +10,12 @@ Turn a CSV into a shareable, multi-chart report — upload your data, build char
 * Color-by-category or color-by-Y-value-threshold, with per-value custom colors
 * Configurable axes, aggregation, and bin sizing per chart type
 * Chart aggregation is read-only end-to-end — viewing/tweaking a chart never mutates your stored dataset, even though it reuses the same grouping logic as the data-cleaning step
+
+Here's what it looks like in project:
+
+Below are some CSV files to try out:
+
+
 📁 **CSV Upload & Cleaning**
  
 * Upload and preview a CSV instantly
@@ -17,6 +23,9 @@ Turn a CSV into a shareable, multi-chart report — upload your data, build char
 * Automatic type detection per column
 * Every upload keeps an untouched original alongside a working copy, so you can reset back to the source data at any point, even after applying several transforms
 * Up to 5 uploaded files are kept at once, oldest evicted automatically
+
+Here's what it looks like:
+
 📄 **Projects as Documents**
  
 * Projects are ordered blocks, not single charts — mix text notes and graphs freely
@@ -98,6 +107,8 @@ Currently local development only — no packaged build or hosted deployment yet.
 * Collaborative/multi-editor project editing
 * Additional chart types
 * Google OAuth sign-in
+* Color options to graphs 
+* upload datas 
 
 ## Screenshots
  

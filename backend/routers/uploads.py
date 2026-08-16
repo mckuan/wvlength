@@ -19,6 +19,8 @@ router = APIRouter(prefix="/upload", tags=["upload"])
 STORAGE_DIR = os.path.join(os.path.dirname(__file__), ".csv_store")
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
+MAX_UPLOAD_SIZE = 20 * 1024 * 1024 
+
 # unique file ID to store the parquet file and metadata, based on filename + timestamp
 def _file_id(filename: str) -> str:
     ts = str(time.time())

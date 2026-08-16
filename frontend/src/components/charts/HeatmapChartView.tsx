@@ -63,7 +63,7 @@ export default function HeatmapChartView({ allRows, rowCol, colCol, valueCol, sc
     camera.position.set(dist * 0.9, dist * 0.9, dist * 0.9)
     camera.lookAt(0, 0, 0)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
+   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
     renderer.setSize(width, height)
     renderer.setPixelRatio(window.devicePixelRatio)
     mount.appendChild(renderer.domElement)

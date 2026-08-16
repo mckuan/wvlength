@@ -94,9 +94,7 @@ Heres a CSV to try it out:
 * JWT (python-jose)
 * Password hashing via bcrypt/passlib
 * Environment-based secret management (`python-dotenv`)
-**Deployment**
- 
-* Local development only, not yet deployed
+  
 ## Why I Built This
  
  Inspired by my research lab and I wanted to create something that could help organize and view data cleanly and quickly

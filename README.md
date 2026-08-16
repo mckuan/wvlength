@@ -99,7 +99,7 @@ Heres a CSV to try it out:
 * Local development only, not yet deployed
 ## Why I Built This
  
- 
+ Inspired by my research lab and I wanted to create something that could help organize and view data cleanly and quickly
  
 ## What I Learned
  

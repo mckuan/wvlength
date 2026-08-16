@@ -63,7 +63,7 @@ export default function WelcomePage() {
 
         <div className="flex items-center gap-3 mb-16">
           <button
-            onClick={() => navigate("/signup")}
+            onClick={() => navigate("/sign-up")}
             className="text-sm font-medium px-6 py-3 rounded-lg"
             style={{ color: "#fff", background: NAVY_DARK, border: "none", cursor: "pointer" }}
           >

@@ -117,18 +117,15 @@ Building wvlength taught me how to:
 * Debounce autosave so rapid edits collapse into a single network request instead of firing on every keystroke, while guarding against premature saves before real data has loaded
 * Coordinate an async, multi-stage UI flow (switch view mode → wait for it to actually render → wait for async content like images to finish loading → capture) for a screenshot-based PDF export
 * Reconstruct a formatted document from structured data rather than a raw screenshot, including manually recreating type scale and image scaling since document-generation libraries don't inherit page CSS
-## Installation
  
-Currently local development only — no packaged build or hosted deployment yet.
- 
-## Future Plans
+## Future Ideas
  
 * Richer text block formatting
 * Collaborative/multi-editor project editing
 * Additional chart types
 * Google OAuth sign-in
 * Color options to graphs 
-* upload datas 
+* upload csv files into the project
 
 ## Screenshots
 <img width="1454" height="789" alt="Screenshot 2026-08-15 at 6 23 43 PM" src="https://github.com/user-attachments/assets/badfc4e3-c19f-47f0-a201-cd50bae44169" />

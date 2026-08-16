@@ -2,7 +2,7 @@
  
 Turn a CSV into a shareable, multi-chart report — upload your data, build charts against it, arrange them alongside notes in a document, and share the finished thing with a link.
 
-## LIVE LINK: 
+## LIVE LINK: https://wvlength-ork6.onrender.com
  
 ## Features
  
@@ -20,6 +20,12 @@ Here's what it looks like in project:
 <img width="1275" height="1650" alt="demo-4" src="https://github.com/user-attachments/assets/6b46d29f-654d-4147-b187-a0bb5aeef068" />
 
 Below are some CSV files to try out:
+- [heatmap_orders_by_time.csv](./sample-data/heatmap_orders_by_time.csv)
+- [bar_regional_sales.csv](./sample-data/bar_regional_sales.csv)
+- [boxplot_delivery_times.csv](./sample-data/boxplot_delivery_times.csv)
+- [histogram_exam_scores.csv](./sample-data/histogram_exam_scores.csv)
+- [line_daily_traffic.csv](./sample-data/line_daily_traffic.csv)
+- [scatter_adspend_revenue.csv](./sample-data/scatter_adspend_revenue.csv)
 
 
 📁 **CSV Upload & Cleaning**
@@ -40,9 +46,10 @@ Here's what it looks like:
 <img width="1431" height="384" alt="Screenshot 2026-08-15 at 6 21 59 PM" src="https://github.com/user-attachments/assets/f08fbb3d-3eae-475e-a8c9-b5277190c2e8" />
 
 Heres a CSV to try it out: 
+- [store_locations_demo.csv](./sample-data/store_locations_demo.csv)
 
 📄 **Projects as Documents**
- 
+    
 * Projects are ordered blocks, not single charts — mix text notes and graphs freely
 * Add a brand-new graph, or pull in one you've already built from a past project (a lightweight reference to the original snapshot, not a duplicate capture)
 * Autosaves as you edit (debounced), no manual save step

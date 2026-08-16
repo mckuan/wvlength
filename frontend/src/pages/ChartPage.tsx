@@ -24,6 +24,22 @@ export default function ChartPage() {
     return null
   }
 
+  // Reads pixels directly off a WebGL canvas's own buffer via canvas.toBlob().
+  // html-to-image's DOM-cloning approach (used for every other chart type)
+  // is unreliable for WebGL canvases across browsers/GPUs — it frequently
+  // captures a blank/transparent frame even when the on-screen canvas is
+  // rendering correctly. Reading the canvas's own buffer sidesteps that
+  // entirely, since it's exactly what's already on screen.
+  async function captureWebglCanvas(node: HTMLDivElement): Promise<Blob> {
+    const canvas = node.querySelector("canvas")
+    if (!canvas) throw new Error("Chart canvas not found")
+    const blob = await new Promise<Blob | null>(resolve =>
+      canvas.toBlob(resolve, "image/png")
+    )
+    if (!blob) throw new Error("Could not capture chart image")
+    return blob
+  }
+
   // captures the rendered chart as a PNG blob, fetches summary stats for
   // whichever numeric columns are on the y-axis, and builds a default name
   // from the file/axes/date — the pieces every saved graph block needs
@@ -32,7 +48,14 @@ export default function ChartPage() {
     const snapshot = chartBuilderRef.current?.getSnapshot()
     if (!node || !snapshot) throw new Error("Chart not ready")
 
-    const blob = await toBlob(node, { backgroundColor: "#ffffff", pixelRatio: 2 })
+    // heatmap is rendered via a raw WebGL canvas (Three.js), appended to the
+    // DOM outside React's tree — html-to-image can't reliably rasterize
+    // that, so read the canvas's own pixel buffer directly instead
+    const blob =
+      snapshot.chart_type === "heatmap"
+        ? await captureWebglCanvas(node)
+        : await toBlob(node, { backgroundColor: "#ffffff", pixelRatio: 2 })
+
     if (!blob) throw new Error("Could not capture chart image")
 
     let stats: Record<string, ColumnStats> = {}
